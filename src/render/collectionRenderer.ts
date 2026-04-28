@@ -308,7 +308,10 @@ export async function renderCollectionTable(
 	if (onActivateEditor) {
 		containerEl.addEventListener("click", (event) => {
 			const target = event.target;
-			if (target instanceof HTMLElement && target.closest("button, .mtg-card-ref")) {
+			if (
+				target instanceof HTMLElement &&
+				target.closest("button, .mtg-card-ref, details, summary, a, input, select")
+			) {
 				return;
 			}
 			onActivateEditor();

@@ -6,6 +6,7 @@ import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { MTGSettings } from "../settings";
 import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
+import { createColorIdentityElement } from "./colorIdentity";
 import { createInlineWarning, createRateLimitWarning } from "./lookupWarning";
 
 type DeckFormat = "standard" | "pioneer" | "modern" | "pauper" | "commander" | "brawl" | "duel" | "oathbreaker" | "legacy" | "vintage";
@@ -23,13 +24,19 @@ const SUPPORTED_DECK_FORMATS = new Set<DeckFormat>([
 	"legacy",
 	"vintage",
 ]);
-const SUPPORTED_DECK_FORMAT_LABELS = Array.from(SUPPORTED_DECK_FORMATS.values()).join(", ");
+const SUPPORTED_DECK_FORMAT_LABELS = Array.from(SUPPORTED_DECK_FORMATS.values())
+	.map((format) => formatDeckFormatLabel(format))
+	.join(", ");
 
 interface DeckRow {
 	lookupName: string;
 	quantity: number;
 	cardName: string;
 	section: string;
+	typeLine?: string;
+	manaValue?: number;
+	colorIdentity: string[];
+	keywords: string[];
 	priceText: string;
 	priceValue: number | null;
 	rateLimitedMessage?: string;
@@ -64,6 +71,29 @@ interface DeckCollectionCoverage {
 	missingCostTotal: number;
 	hasEstimatedMissingCost: boolean;
 	rows: DeckDeficitRow[];
+}
+
+interface AnalyticsBucket {
+	label: string;
+	count: number;
+}
+
+interface KeywordAnalyticsRow {
+	keyword: string;
+	count: number;
+	averageManaValue: number | null;
+}
+
+interface DeckAnalytics {
+	totalCards: number;
+	landCount: number;
+	nonlandCount: number;
+	averageManaValue: number | null;
+	colorIdentity: string[];
+	distinctKeywordCount: number;
+	manaCurve: AnalyticsBucket[];
+	typeDistribution: AnalyticsBucket[];
+	keywords: KeywordAnalyticsRow[];
 }
 
 function getUnitUsdPrice(result: CardPreviewResult): number | null {
@@ -103,6 +133,13 @@ function sortRows(rows: DeckRow[]): DeckRow[] {
 
 function normalizeCardKey(cardName: string): string {
 	return cardName.trim().toLowerCase();
+}
+
+function formatDeckFormatLabel(format: string): string {
+	return format
+		.split(/[-_\s]+/)
+		.map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+		.join(" ");
 }
 
 function normalizeDeckFormat(format: string | undefined): DeckFormat | null {
@@ -145,6 +182,32 @@ function getDeckLegalityMessage(cardName: string, deckFormat: DeckFormat, status
 		default:
 			return undefined;
 	}
+}
+
+function isLandType(typeLine: string | undefined): boolean {
+	return typeLine?.toLowerCase().includes("land") ?? false;
+}
+
+function classifyCardType(typeLine: string | undefined): string {
+	const normalized = typeLine?.toLowerCase() ?? "";
+	if (normalized.includes("land")) return "Land";
+	if (normalized.includes("creature")) return "Creature";
+	if (normalized.includes("instant")) return "Instant";
+	if (normalized.includes("sorcery")) return "Sorcery";
+	if (normalized.includes("artifact")) return "Artifact";
+	if (normalized.includes("enchantment")) return "Enchantment";
+	if (normalized.includes("planeswalker")) return "Planeswalker";
+	if (normalized.includes("battle")) return "Battle";
+	return "Other";
+}
+
+function formatAverageManaValue(value: number | null): string {
+	return value === null ? "N/A" : value.toFixed(1);
+}
+
+function formatPercent(value: number, total: number): string {
+	if (total === 0) return "0%";
+	return `${Math.round((value / total) * 100)}%`;
 }
 
 function createSvgElement(svgMarkup: string): SVGElement | null {
@@ -296,6 +359,10 @@ async function mapDeckRows(
 				quantity: card.quantity,
 				cardName: resolved.cardName,
 				section,
+				typeLine: resolved.card?.typeLine,
+				manaValue: resolved.card?.manaValue,
+				colorIdentity: resolved.card?.colorIdentity ?? [],
+				keywords: resolved.card?.keywords ?? [],
 				priceText: formatLinePrice(card.quantity, unitPrice),
 				priceValue: unitPrice,
 				rateLimitedMessage:
@@ -411,6 +478,265 @@ function renderTableFooter(table: HTMLElement, rows: DeckRow[]): void {
 	});
 }
 
+function buildDeckAnalytics(rows: DeckRow[]): DeckAnalytics {
+	const manaCurveMap = new Map<string, number>([
+		["0", 0],
+		["1", 0],
+		["2", 0],
+		["3", 0],
+		["4", 0],
+		["5", 0],
+		["6+", 0],
+		["Lands", 0],
+	]);
+	const typeCounts = new Map<string, number>();
+	const keywordCounts = new Map<string, { count: number; manaValueTotal: number; manaValueCount: number }>();
+	const colorIdentity = new Set<string>();
+	let totalCards = 0;
+	let landCount = 0;
+	let nonlandCount = 0;
+	let manaValueTotal = 0;
+	let manaValueCount = 0;
+
+	for (const row of rows) {
+		totalCards += row.quantity;
+		const isLand = isLandType(row.typeLine);
+		if (isLand) {
+			landCount += row.quantity;
+			manaCurveMap.set("Lands", (manaCurveMap.get("Lands") ?? 0) + row.quantity);
+		} else {
+			nonlandCount += row.quantity;
+			const manaValue = row.manaValue ?? 0;
+			manaValueTotal += manaValue * row.quantity;
+			manaValueCount += row.quantity;
+			const manaCurveKey = manaValue >= 6 ? "6+" : String(Math.max(0, Math.floor(manaValue)));
+			manaCurveMap.set(manaCurveKey, (manaCurveMap.get(manaCurveKey) ?? 0) + row.quantity);
+		}
+
+		const typeLabel = classifyCardType(row.typeLine);
+		typeCounts.set(typeLabel, (typeCounts.get(typeLabel) ?? 0) + row.quantity);
+
+		for (const symbol of row.colorIdentity) {
+			colorIdentity.add(symbol);
+		}
+
+		for (const keyword of row.keywords) {
+			const current = keywordCounts.get(keyword) ?? {
+				count: 0,
+				manaValueTotal: 0,
+				manaValueCount: 0,
+			};
+			current.count += row.quantity;
+			if (row.manaValue !== undefined) {
+				current.manaValueTotal += row.manaValue * row.quantity;
+				current.manaValueCount += row.quantity;
+			}
+			keywordCounts.set(keyword, current);
+		}
+	}
+
+	const manaCurve = Array.from(manaCurveMap.entries()).map(([label, count]) => ({ label, count }));
+	const typeOrder = [
+		"Creature",
+		"Land",
+		"Instant",
+		"Sorcery",
+		"Artifact",
+		"Enchantment",
+		"Planeswalker",
+		"Battle",
+		"Other",
+	];
+	const typeDistribution = typeOrder
+		.map((label) => ({ label, count: typeCounts.get(label) ?? 0 }))
+		.filter((bucket) => bucket.count > 0);
+	const keywords = Array.from(keywordCounts.entries())
+		.map(([keyword, entry]) => ({
+			keyword,
+			count: entry.count,
+			averageManaValue:
+				entry.manaValueCount > 0 ? entry.manaValueTotal / entry.manaValueCount : null,
+		}))
+		.sort((left, right) => {
+			if (right.count !== left.count) {
+				return right.count - left.count;
+			}
+			return left.keyword.localeCompare(right.keyword);
+		});
+
+	return {
+		totalCards,
+		landCount,
+		nonlandCount,
+		averageManaValue: manaValueCount > 0 ? manaValueTotal / manaValueCount : null,
+		colorIdentity: Array.from(colorIdentity.values()),
+		distinctKeywordCount: keywords.length,
+		manaCurve,
+		typeDistribution,
+		keywords,
+	};
+}
+
+function renderAnalyticsStat(
+	containerEl: HTMLElement,
+	label: string,
+	value: string | HTMLElement
+): void {
+	const card = containerEl.createEl("div", { cls: "mtg-deck-analytics-stat" });
+	const valueEl = card.createEl("div", {
+		cls: "mtg-deck-analytics-stat-value",
+	});
+	if (typeof value === "string") {
+		valueEl.textContent = value;
+	} else {
+		valueEl.appendChild(value);
+	}
+	card.createEl("div", {
+		text: label,
+		cls: "mtg-deck-analytics-stat-label",
+	});
+}
+
+function createCollapsibleSection(
+	containerEl: HTMLElement,
+	sectionClassName: string,
+	title: string
+): HTMLElement {
+	const details = containerEl.createEl("details", {
+		cls: `${sectionClassName} mtg-collapsible-section`,
+	});
+	const summary = details.createEl("summary", { cls: "mtg-collapsible-summary" });
+	summary.createEl("h4", {
+		text: title,
+		cls: "mtg-collapsible-heading",
+	});
+	return details.createEl("div", { cls: "mtg-collapsible-content" });
+}
+
+function renderManaCurveChart(containerEl: HTMLElement, buckets: AnalyticsBucket[]): void {
+	const section = containerEl.createEl("section", { cls: "mtg-deck-analytics-panel" });
+	section.createEl("h5", {
+		text: "Mana curve",
+		cls: "mtg-deck-analytics-subheading",
+	});
+
+	const chart = section.createEl("div", { cls: "mtg-deck-curve-chart" });
+	const maxCount = Math.max(...buckets.map((bucket) => bucket.count), 1);
+
+	for (const bucket of buckets) {
+		const column = chart.createEl("div", { cls: "mtg-deck-curve-column" });
+		column.createEl("span", {
+			text: String(bucket.count),
+			cls: "mtg-deck-curve-value",
+		});
+		const bar = column.createEl("div", { cls: "mtg-deck-curve-bar" });
+		bar.style.height = `${Math.max((bucket.count / maxCount) * 100, bucket.count > 0 ? 8 : 0)}%`;
+		column.createEl("span", {
+			text: bucket.label,
+			cls: "mtg-deck-curve-label",
+		});
+	}
+}
+
+function renderTypeDistribution(containerEl: HTMLElement, buckets: AnalyticsBucket[], totalCards: number): void {
+	const section = containerEl.createEl("section", { cls: "mtg-deck-analytics-panel" });
+	section.createEl("h5", {
+		text: "Type distribution",
+		cls: "mtg-deck-analytics-subheading",
+	});
+
+	const bar = section.createEl("div", { cls: "mtg-deck-type-bar" });
+	for (const bucket of buckets) {
+		const segment = bar.createEl("span", {
+			cls: `mtg-deck-type-segment is-${normalizeCardKey(bucket.label).replace(/[^a-z0-9]+/g, "-")}`,
+		});
+		segment.style.width = `${(bucket.count / Math.max(totalCards, 1)) * 100}%`;
+		segment.title = `${bucket.label}: ${bucket.count}`;
+	}
+
+	const legend = section.createEl("div", { cls: "mtg-deck-type-legend" });
+	for (const bucket of buckets) {
+		const row = legend.createEl("div", { cls: "mtg-deck-type-legend-row" });
+		row.createEl("span", {
+			cls: `mtg-deck-type-dot is-${normalizeCardKey(bucket.label).replace(/[^a-z0-9]+/g, "-")}`,
+		});
+		row.createEl("span", {
+			text: bucket.label,
+			cls: "mtg-deck-type-legend-label",
+		});
+		row.createEl("span", {
+			text: `${bucket.count} · ${formatPercent(bucket.count, totalCards)}`,
+			cls: "mtg-deck-type-legend-value",
+		});
+	}
+}
+
+function renderKeywordTable(containerEl: HTMLElement, keywords: KeywordAnalyticsRow[]): void {
+	const section = containerEl.createEl("section", { cls: "mtg-deck-analytics-panel" });
+	section.createEl("h5", {
+		text: "Card keywords",
+		cls: "mtg-deck-analytics-subheading",
+	});
+
+	if (keywords.length === 0) {
+		section.createEl("p", {
+			text: "No keyword data found for this deck.",
+			cls: "mtg-deck-analytics-empty",
+		});
+		return;
+	}
+
+	const table = section.createEl("table", { cls: "mtg-deck-keyword-table" });
+	const thead = table.createEl("thead");
+	const headRow = thead.createEl("tr");
+	headRow.createEl("th", { text: "Count" });
+	headRow.createEl("th", { text: "Keyword" });
+	headRow.createEl("th", { text: "AMV" });
+
+	const tbody = table.createEl("tbody");
+	for (const row of keywords) {
+		const tr = tbody.createEl("tr");
+		tr.createEl("td", { text: String(row.count) });
+		tr.createEl("td", { text: row.keyword });
+		tr.createEl("td", { text: formatAverageManaValue(row.averageManaValue) });
+	}
+}
+
+function renderDeckAnalyticsSection(
+	containerEl: HTMLElement,
+	analytics: DeckAnalytics,
+	deckFormat: DeckFormat | null,
+	rawFormat: string | undefined
+): void {
+	const section = createCollapsibleSection(
+		containerEl,
+		"mtg-deck-analytics-section",
+		"Deck analytics"
+	);
+	const header = section.createEl("div", { cls: "mtg-deck-analytics-header" });
+	if (deckFormat) {
+		header.createEl("span", {
+			text: formatDeckFormatLabel(deckFormat),
+			cls: "mtg-deck-analytics-format-badge",
+		});
+	} else if (rawFormat) {
+		header.createEl("span", {
+			text: formatDeckFormatLabel(rawFormat),
+			cls: "mtg-deck-analytics-format-badge is-unsupported",
+		});
+	}
+
+	const stats = section.createEl("div", { cls: "mtg-deck-analytics-stats" });
+	renderAnalyticsStat(stats, "Total cards", String(analytics.totalCards));
+	renderAnalyticsStat(stats, "Average MV", formatAverageManaValue(analytics.averageManaValue));
+	renderAnalyticsStat(stats, "Colors", createColorIdentityElement(analytics.colorIdentity));
+
+	const panels = section.createEl("div", { cls: "mtg-deck-analytics-grid" });
+	renderManaCurveChart(panels, analytics.manaCurve);
+	renderTypeDistribution(panels, analytics.typeDistribution, analytics.totalCards);
+	renderKeywordTable(section, analytics.keywords.slice(0, 12));
+}
+
 function renderCollectionCoverageSection(
 	containerEl: HTMLElement,
 	coverage: DeckCollectionCoverage,
@@ -419,12 +745,12 @@ function renderCollectionCoverageSection(
 	popover: MtgPopover,
 	onRetry: (cardName: string) => Promise<void>
 ): void {
-	const section = containerEl.createEl("section", { cls: "mtg-deck-deficit-section" });
+	const section = createCollapsibleSection(
+		containerEl,
+		"mtg-deck-deficit-section",
+		"Collection coverage"
+	);
 	const collectionFolder = getSettings().collectionFolder.trim() || "the vault";
-	section.createEl("h4", {
-		text: "Collection coverage",
-		cls: "mtg-deck-deficit-heading",
-	});
 
 	const sourceSummary =
 		coverage.sourceBlockCount === 0
@@ -479,6 +805,10 @@ function renderCollectionCoverageSection(
 				quantity: row.needed,
 				cardName: row.cardName,
 				section: "",
+				typeLine: undefined,
+				manaValue: undefined,
+				colorIdentity: [],
+				keywords: [],
 				priceText: row.missingCostText,
 				priceValue: row.missingCostValue,
 			},
@@ -551,6 +881,7 @@ export async function renderDeckTable(
 	const deckFormat = normalizeDeckFormat(parsed.format);
 	const rows = await mapDeckRows(parsed.cards, cache, deckFormat);
 	const coverage = await buildDeckCollectionCoverage(app, rows, getSettings());
+	const analytics = buildDeckAnalytics(rows);
 	if (!loadingEl.isConnected) {
 		return;
 	}
@@ -592,4 +923,5 @@ export async function renderDeckTable(
 	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry);
 	renderTableFooter(table, rows);
 	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
+	renderDeckAnalyticsSection(containerEl, analytics, deckFormat, parsed.format);
 }

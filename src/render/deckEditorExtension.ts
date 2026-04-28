@@ -30,7 +30,14 @@ class MtgDeckWidget extends WidgetType {
 	toDOM(view: EditorView): HTMLElement {
 		const container = document.createElement("div");
 		container.className = "mtg-deck-widget";
-		container.addEventListener("click", () => {
+		container.addEventListener("click", (event) => {
+			const target = event.target;
+			if (
+				target instanceof HTMLElement &&
+				target.closest("button, .mtg-card-ref, details, summary, a, input, select")
+			) {
+				return;
+			}
 			view.dispatch({
 				selection: { anchor: this.blockStart + 4 },
 				scrollIntoView: true,

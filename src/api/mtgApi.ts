@@ -15,6 +15,7 @@ export type CardLookupStatus =
 
 export interface CardMetadataFields {
 	manaCost?: string;
+	manaValue?: number;
 	typeLine?: string;
 	power?: string;
 	toughness?: string;
@@ -45,6 +46,7 @@ interface ScryfallCard {
 	object: string;
 	name: string;
 	mana_cost?: string;
+	cmc?: number;
 	type_line?: string;
 	power?: string;
 	toughness?: string;
@@ -133,6 +135,7 @@ async function scheduleScryfallRequest<T>(task: () => Promise<T>): Promise<T> {
 function extractMetadata(data: ScryfallCard): CardMetadataFields {
 	return {
 		manaCost: data.mana_cost,
+		manaValue: data.cmc,
 		typeLine: data.type_line,
 		power: data.power,
 		toughness: data.toughness,
