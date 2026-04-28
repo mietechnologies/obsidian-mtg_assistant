@@ -14,6 +14,10 @@ const CARD_LINE_PATTERNS = [
 	/^(\d+)\s+(.+?)\s*$/,
 ];
 
+function stripListMarker(line: string): string {
+	return line.replace(/^[-*+]\s+/, "");
+}
+
 function normalizeParsedCardName(cardName: string): string {
 	const trimmed = cardName.trim();
 
@@ -40,13 +44,20 @@ function parseSectionLabel(line: string, commanderMarker?: string): string | nul
 		return "Commander";
 	}
 
+	const headingMatch = /^#{1,6}\s+(.+?)\s*$/.exec(line);
+	if (headingMatch?.[1]) {
+		return headingMatch[1].trim().replace(/:\s*$/, "");
+	}
+
 	const match = /^\s*-\s*(.+?)\s*:\s*$/.exec(line);
 	return match?.[1]?.trim() ?? null;
 }
 
 function parseCardLine(line: string, minimumQuantity: number): ParsedDeckCard | null {
+	const normalizedLine = stripListMarker(line);
+
 	for (const pattern of CARD_LINE_PATTERNS) {
-		const match = pattern.exec(line);
+		const match = pattern.exec(normalizedLine);
 		if (!match) continue;
 
 		const quantity = Number.parseInt(match[1] ?? "", 10);

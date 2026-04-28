@@ -1,7 +1,5 @@
 # TODO
 
-- Bulk purchase export for TCGPlayer:
-  Turn missing or selected cards into a bulk purchase list that can be sent to TCGPlayer for cart-building or order preparation.
 - Richer card popover:
   Show more cached metadata in the hover preview, such as mana cost, type line, rarity, power/toughness, and legality context.
 - Printing and set selection:

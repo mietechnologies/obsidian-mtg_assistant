@@ -1,6 +1,7 @@
 import { App } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { loadCollectionTotals } from "../collection/collectionIndex";
+import tcgPlayerSvg from "../img/tcg_player.svg";
 import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { MTGSettings } from "../settings";
@@ -83,6 +84,59 @@ function sortRows(rows: DeckRow[]): DeckRow[] {
 
 function normalizeCardKey(cardName: string): string {
 	return cardName.trim().toLowerCase();
+}
+
+function createSvgElement(svgMarkup: string): SVGElement | null {
+	const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
+	const svg = doc.documentElement;
+	return svg instanceof SVGElement ? svg : null;
+}
+
+function buildTcgPlayerMassEntryUrl(rows: DeckDeficitRow[]): string | null {
+	if (rows.length === 0) {
+		return null;
+	}
+
+	const content = rows
+		.filter((row) => row.missing > 0)
+		.map((row) => `${row.missing} ${row.cardName}`)
+		.join("||");
+
+	if (!content) {
+		return null;
+	}
+
+	const params = new URLSearchParams({
+		productline: "Magic",
+		c: content,
+	});
+	return `https://www.tcgplayer.com/massentry?${params.toString()}`;
+}
+
+function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null {
+	const url = buildTcgPlayerMassEntryUrl(rows);
+	if (!url) {
+		return null;
+	}
+
+	const link = document.createElement("a");
+	link.className = "mtg-tcgplayer-button";
+	link.href = url;
+	link.target = "_blank";
+	link.rel = "noopener noreferrer";
+	link.setAttribute("aria-label", "Open missing cards in TCGPlayer mass entry");
+
+	const icon = createSvgElement(tcgPlayerSvg);
+	if (icon) {
+		icon.classList.add("mtg-tcgplayer-button-icon");
+		icon.setAttribute("aria-hidden", "true");
+		link.appendChild(icon);
+	}
+
+	const label = document.createElement("span");
+	label.textContent = "Buy missing cards on TCGPlayer";
+	link.appendChild(label);
+	return link;
 }
 
 async function buildDeckCollectionCoverage(
@@ -325,10 +379,6 @@ function renderCollectionCoverageSection(
 	}
 
 	const costPrefix = coverage.hasEstimatedMissingCost ? "~" : "";
-	section.createEl("p", {
-		text: `Estimated missing cost: ${costPrefix}$${coverage.missingCostTotal.toFixed(2)}`,
-		cls: "mtg-deck-deficit-summary",
-	});
 
 	const table = section.createEl("table", { cls: "mtg-deck-deficit-table" });
 	const thead = table.createEl("thead");
@@ -360,6 +410,35 @@ function renderCollectionCoverageSection(
 		tr.createEl("td", { text: String(row.owned), cls: "mtg-deck-deficit-qty" });
 		tr.createEl("td", { text: String(row.missing), cls: "mtg-deck-deficit-qty" });
 		tr.createEl("td", { text: row.missingCostText, cls: "mtg-deck-price" });
+	}
+
+	const tfoot = table.createEl("tfoot");
+	const footerRow = tfoot.createEl("tr", { cls: "mtg-deck-deficit-footer-row" });
+	footerRow.createEl("td", {
+		text: "Total missing cost",
+		cls: "mtg-deck-deficit-footer-cell",
+	});
+	footerRow.createEl("td", {
+		text: "",
+		cls: "mtg-deck-deficit-footer-cell",
+	});
+	footerRow.createEl("td", {
+		text: "",
+		cls: "mtg-deck-deficit-footer-cell",
+	});
+	footerRow.createEl("td", {
+		text: "",
+		cls: "mtg-deck-deficit-footer-cell",
+	});
+	footerRow.createEl("td", {
+		text: `${costPrefix}$${coverage.missingCostTotal.toFixed(2)}`,
+		cls: "mtg-deck-price mtg-deck-deficit-footer-cell",
+	});
+
+	const tcgPlayerButton = createTcgPlayerButton(coverage.rows);
+	if (tcgPlayerButton) {
+		const actionRow = section.createEl("div", { cls: "mtg-deck-deficit-actions" });
+		actionRow.appendChild(tcgPlayerButton);
 	}
 }
 
