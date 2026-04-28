@@ -11,6 +11,11 @@
 	outline: 2px solid var(--interactive-accent);
 }
 
+.mtg-card-ref.is-invalid-for-deck {
+	color: var(--text-error);
+	text-decoration-color: var(--text-error);
+}
+
 .mtg-card-warning {
 	display: inline-flex;
 	align-items: center;
@@ -172,6 +177,11 @@
 .mtg-deck-price {
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
+}
+
+.mtg-deck-validation-message {
+	margin: 0.35rem 0 0.75rem;
+	color: var(--text-muted);
 }
 
 .mtg-deck-widget {

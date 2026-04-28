@@ -6,7 +6,24 @@ import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { MTGSettings } from "../settings";
 import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
-import { createRateLimitWarning } from "./lookupWarning";
+import { createInlineWarning, createRateLimitWarning } from "./lookupWarning";
+
+type DeckFormat = "standard" | "pioneer" | "modern" | "pauper" | "commander" | "brawl" | "duel" | "oathbreaker" | "legacy" | "vintage";
+type DeckLegalityStatus = "legal" | "not_legal" | "banned" | "restricted" | null;
+
+const SUPPORTED_DECK_FORMATS = new Set<DeckFormat>([
+	"standard",
+	"pioneer",
+	"modern",
+	"pauper",
+	"commander",
+	"brawl",
+	"duel",
+	"oathbreaker",
+	"legacy",
+	"vintage",
+]);
+const SUPPORTED_DECK_FORMAT_LABELS = Array.from(SUPPORTED_DECK_FORMATS.values()).join(", ");
 
 interface DeckRow {
 	lookupName: string;
@@ -16,6 +33,8 @@ interface DeckRow {
 	priceText: string;
 	priceValue: number | null;
 	rateLimitedMessage?: string;
+	deckLegalityStatus?: DeckLegalityStatus;
+	deckLegalityMessage?: string;
 }
 
 interface DeckTotals {
@@ -84,6 +103,48 @@ function sortRows(rows: DeckRow[]): DeckRow[] {
 
 function normalizeCardKey(cardName: string): string {
 	return cardName.trim().toLowerCase();
+}
+
+function normalizeDeckFormat(format: string | undefined): DeckFormat | null {
+	if (!format) {
+		return null;
+	}
+
+	const normalized = format.trim().toLowerCase() as DeckFormat;
+	return SUPPORTED_DECK_FORMATS.has(normalized) ? normalized : null;
+}
+
+function getDeckLegalityStatus(
+	legalities: Record<string, string> | undefined,
+	deckFormat: DeckFormat | null
+): DeckLegalityStatus {
+	if (!deckFormat || !legalities) {
+		return null;
+	}
+
+	const status = legalities[deckFormat];
+	switch (status) {
+		case "legal":
+		case "not_legal":
+		case "banned":
+		case "restricted":
+			return status;
+		default:
+			return null;
+	}
+}
+
+function getDeckLegalityMessage(cardName: string, deckFormat: DeckFormat, status: DeckLegalityStatus): string | undefined {
+	switch (status) {
+		case "banned":
+			return `${cardName} is banned in ${deckFormat}.`;
+		case "not_legal":
+			return `${cardName} is not legal in ${deckFormat}.`;
+		case "restricted":
+			return `${cardName} is restricted in ${deckFormat}.`;
+		default:
+			return undefined;
+	}
 }
 
 function createSvgElement(svgMarkup: string): SVGElement | null {
@@ -207,6 +268,7 @@ async function buildDeckCollectionCoverage(
 async function mapDeckRows(
 	cards: ParsedDeckCard[],
 	cache: CardCache,
+	deckFormat: DeckFormat | null,
 	concurrency = 4
 ): Promise<DeckRow[]> {
 	const rows: DeckRow[] = [];
@@ -224,6 +286,10 @@ async function mapDeckRows(
 				? titleCaseSection(card.section)
 				: inferSection(resolved.card?.typeLine);
 			const unitPrice = getUnitUsdPrice(resolved);
+			const deckLegalityStatus = getDeckLegalityStatus(
+				resolved.card?.legalities,
+				deckFormat
+			);
 
 			rows[currentIndex] = {
 				lookupName: card.cardName,
@@ -234,6 +300,11 @@ async function mapDeckRows(
 				priceValue: unitPrice,
 				rateLimitedMessage:
 					resolved.status === "rate-limited" ? resolved.message : undefined,
+				deckLegalityStatus,
+				deckLegalityMessage:
+					deckFormat && deckLegalityStatus
+						? getDeckLegalityMessage(resolved.cardName, deckFormat, deckLegalityStatus)
+						: undefined,
 			};
 		}
 	};
@@ -253,13 +324,23 @@ function createCardNameCell(
 ): HTMLTableCellElement {
 	const cell = document.createElement("td");
 	const span = document.createElement("span");
-	span.className = "mtg-card-ref";
+	const isInvalidForDeck =
+		row.deckLegalityStatus === "banned" || row.deckLegalityStatus === "not_legal";
+	span.className = isInvalidForDeck ? "mtg-card-ref is-invalid-for-deck" : "mtg-card-ref";
 	span.textContent = row.cardName;
 	span.tabIndex = 0;
 	span.setAttribute("role", "button");
 	span.setAttribute("aria-label", `Show Magic card preview for ${row.cardName}`);
 	attachHoverEvents(span, row.cardName, cache, getSettings, popover);
 	cell.appendChild(span);
+	if (isInvalidForDeck) {
+		cell.appendChild(
+			createInlineWarning(row.deckLegalityMessage, {
+				label: `Deck legality warning for ${row.cardName}`,
+				symbol: "⚠️",
+			})
+		);
+	}
 	if (row.rateLimitedMessage) {
 		cell.appendChild(createRateLimitWarning(row.rateLimitedMessage, () => onRetry(row.lookupName)));
 	}
@@ -467,7 +548,8 @@ export async function renderDeckTable(
 		cls: "mtg-card-popover-message",
 	});
 
-	const rows = await mapDeckRows(parsed.cards, cache);
+	const deckFormat = normalizeDeckFormat(parsed.format);
+	const rows = await mapDeckRows(parsed.cards, cache, deckFormat);
 	const coverage = await buildDeckCollectionCoverage(app, rows, getSettings());
 	if (!loadingEl.isConnected) {
 		return;
@@ -475,6 +557,20 @@ export async function renderDeckTable(
 
 	containerEl.empty();
 	containerEl.removeClass("is-updating");
+
+	if (parsed.format && !deckFormat) {
+		const warningRow = containerEl.createEl("p", { cls: "mtg-deck-validation-message" });
+		warningRow.appendChild(
+			createInlineWarning(
+				`Unsupported deck format "${parsed.format}". Supported formats: ${SUPPORTED_DECK_FORMAT_LABELS}.`,
+				{
+					label: "Unsupported deck format",
+					symbol: "⚠️",
+				}
+			)
+		);
+		warningRow.append(" Deck legality validation skipped.");
+	}
 
 	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
 	const thead = table.createEl("thead");

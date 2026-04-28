@@ -6,6 +6,7 @@ export interface ParsedDeckCard {
 
 export interface ParsedDeck {
 	cards: ParsedDeckCard[];
+	format?: string;
 }
 
 const CARD_LINE_PATTERNS = [
@@ -72,6 +73,15 @@ function parseCardLine(line: string, minimumQuantity: number): ParsedDeckCard | 
 	return null;
 }
 
+function parseFormatLine(line: string): string | null {
+	const match = /^format\s*:\s*(.+?)\s*$/i.exec(line);
+	if (!match?.[1]) {
+		return null;
+	}
+
+	return match[1].trim().toLowerCase();
+}
+
 function parseCardList(
 	source: string,
 	options: {
@@ -81,10 +91,17 @@ function parseCardList(
 ): ParsedDeck {
 	const cards = new Map<string, ParsedDeckCard>();
 	let currentSection: string | undefined;
+	let format: string | undefined;
 
 	for (const rawLine of source.split(/\r?\n/)) {
 		const line = rawLine.trim();
 		if (!line) continue;
+
+		const parsedFormat = parseFormatLine(line);
+		if (parsedFormat) {
+			format = parsedFormat;
+			continue;
+		}
 
 		const section = parseSectionLabel(line, options.commanderMarker?.trim());
 		if (section) {
@@ -111,7 +128,10 @@ function parseCardList(
 		});
 	}
 
-	return { cards: Array.from(cards.values()) };
+	return {
+		cards: Array.from(cards.values()),
+		format,
+	};
 }
 
 export function parseDeckList(source: string, commanderMarker?: string): ParsedDeck {
