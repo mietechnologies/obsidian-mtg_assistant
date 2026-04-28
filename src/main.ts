@@ -8,6 +8,7 @@ import { buildCollectionEditorExtension } from "./render/collectionEditorExtensi
 import { renderCollectionTable } from "./render/collectionRenderer";
 import { renderDeckTable } from "./render/deckRenderer";
 import { DEFAULT_SETTINGS, MTGSettings, MTGSettingTab } from "./settings";
+import { isPathInFolder } from "./collection/collectionIndex";
 
 export default class MtgAssistantPlugin extends Plugin {
 	settings: MTGSettings;
@@ -34,12 +35,13 @@ export default class MtgAssistantPlugin extends Plugin {
 			buildEditorExtension(this.cache, () => this.settings, this.popover)
 		);
 		this.editorExtensions.push(
-			buildDeckEditorExtension(this.cache, () => this.settings, this.popover)
+			buildDeckEditorExtension(this.app, this.cache, () => this.settings, this.popover)
 		);
 		this.editorExtensions.push(
 			buildCollectionEditorExtension(this.cache, () => this.settings, this.popover)
 		);
 		this.registerEditorExtension(this.editorExtensions);
+		this.registerVaultRefreshEvents();
 
 		this.addSettingTab(new MTGSettingTab(this.app, this));
 	}
@@ -90,6 +92,7 @@ export default class MtgAssistantPlugin extends Plugin {
 				const container = document.createElement("div");
 				preEl.replaceWith(container);
 				await renderDeckTable(
+					this.app,
 					container,
 					codeEl.textContent ?? "",
 					this.cache,
@@ -121,6 +124,50 @@ export default class MtgAssistantPlugin extends Plugin {
 				});
 			}
 		}
+	}
+
+	private registerVaultRefreshEvents(): void {
+		const refreshIfCollectionNote = (path: string): void => {
+			if (!isPathInFolder(path, this.settings.collectionFolder)) {
+				return;
+			}
+
+			this.refreshViews();
+		};
+
+		this.registerEvent(
+			this.app.vault.on("modify", (file) => {
+				if (file instanceof TFile) {
+					refreshIfCollectionNote(file.path);
+				}
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on("create", (file) => {
+				if (file instanceof TFile) {
+					refreshIfCollectionNote(file.path);
+				}
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on("delete", (file) => {
+				refreshIfCollectionNote(file.path);
+			})
+		);
+		this.registerEvent(
+			this.app.vault.on("rename", (file, oldPath) => {
+				if (!(file instanceof TFile)) {
+					return;
+				}
+
+				if (
+					isPathInFolder(oldPath, this.settings.collectionFolder) ||
+					isPathInFolder(file.path, this.settings.collectionFolder)
+				) {
+					this.refreshViews();
+				}
+			})
+		);
 	}
 
 	private async updateCollectionBlockInFile(

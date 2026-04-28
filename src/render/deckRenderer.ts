@@ -1,4 +1,6 @@
+import { App } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
+import { loadCollectionTotals } from "../collection/collectionIndex";
 import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { MTGSettings } from "../settings";
@@ -21,6 +23,29 @@ interface DeckTotals {
 	hasEstimatedPrices: boolean;
 }
 
+interface DeckDeficitRow {
+	lookupName: string;
+	cardName: string;
+	needed: number;
+	owned: number;
+	missing: number;
+	missingCostText: string;
+	missingCostValue: number | null;
+}
+
+interface DeckCollectionCoverage {
+	sourceFileCount: number;
+	sourceBlockCount: number;
+	coveredQuantity: number;
+	totalQuantity: number;
+	missingQuantity: number;
+	coveredCardCount: number;
+	missingCardCount: number;
+	missingCostTotal: number;
+	hasEstimatedMissingCost: boolean;
+	rows: DeckDeficitRow[];
+}
+
 function getUnitUsdPrice(result: CardPreviewResult): number | null {
 	const usd = result.card?.prices?.usd;
 	if (!usd) return null;
@@ -39,6 +64,11 @@ function formatDeckTotal(totals: DeckTotals): string {
 	return `${prefix}$${totals.totalPrice.toFixed(2)}`;
 }
 
+function formatMissingCost(quantity: number, unitPrice: number | null): string {
+	if (unitPrice === null) return "N/A";
+	return `$${(quantity * unitPrice).toFixed(2)}`;
+}
+
 function sortRows(rows: DeckRow[]): DeckRow[] {
 	return [...rows].sort((left, right) => {
 		const sectionDelta = sectionSortKey(left.section) - sectionSortKey(right.section);
@@ -49,6 +79,75 @@ function sortRows(rows: DeckRow[]): DeckRow[] {
 
 		return left.cardName.localeCompare(right.cardName);
 	});
+}
+
+function normalizeCardKey(cardName: string): string {
+	return cardName.trim().toLowerCase();
+}
+
+async function buildDeckCollectionCoverage(
+	app: App,
+	rows: DeckRow[],
+	settings: MTGSettings
+): Promise<DeckCollectionCoverage> {
+	const collection = await loadCollectionTotals(app, settings);
+	const rowsWithDeficits: DeckDeficitRow[] = [];
+	let coveredQuantity = 0;
+	let missingQuantity = 0;
+	let coveredCardCount = 0;
+	let missingCardCount = 0;
+	let missingCostTotal = 0;
+	let hasEstimatedMissingCost = false;
+
+	for (const row of rows) {
+		const owned = collection.quantities.get(normalizeCardKey(row.lookupName)) ?? 0;
+		const covered = Math.min(row.quantity, owned);
+		const missing = Math.max(0, row.quantity - owned);
+
+		coveredQuantity += covered;
+		if (missing === 0) {
+			coveredCardCount += 1;
+			continue;
+		}
+
+		missingQuantity += missing;
+		missingCardCount += 1;
+		if (row.priceValue === null) {
+			hasEstimatedMissingCost = true;
+		} else {
+			missingCostTotal += missing * row.priceValue;
+		}
+
+		rowsWithDeficits.push({
+			lookupName: row.lookupName,
+			cardName: row.cardName,
+			needed: row.quantity,
+			owned,
+			missing,
+			missingCostText: formatMissingCost(missing, row.priceValue),
+			missingCostValue: row.priceValue === null ? null : missing * row.priceValue,
+		});
+	}
+
+	rowsWithDeficits.sort((left, right) => {
+		if (right.missing !== left.missing) {
+			return right.missing - left.missing;
+		}
+		return left.cardName.localeCompare(right.cardName);
+	});
+
+	return {
+		sourceFileCount: collection.sourceFileCount,
+		sourceBlockCount: collection.sourceBlockCount,
+		coveredQuantity,
+		totalQuantity: rows.reduce((sum, row) => sum + row.quantity, 0),
+		missingQuantity,
+		coveredCardCount,
+		missingCardCount,
+		missingCostTotal,
+		hasEstimatedMissingCost,
+		rows: rowsWithDeficits,
+	};
 }
 
 async function mapDeckRows(
@@ -177,7 +276,95 @@ function renderTableFooter(table: HTMLElement, rows: DeckRow[]): void {
 	});
 }
 
+function renderCollectionCoverageSection(
+	containerEl: HTMLElement,
+	coverage: DeckCollectionCoverage,
+	cache: CardCache,
+	getSettings: () => MTGSettings,
+	popover: MtgPopover,
+	onRetry: (cardName: string) => Promise<void>
+): void {
+	const section = containerEl.createEl("section", { cls: "mtg-deck-deficit-section" });
+	const collectionFolder = getSettings().collectionFolder.trim() || "the vault";
+	section.createEl("h4", {
+		text: "Collection coverage",
+		cls: "mtg-deck-deficit-heading",
+	});
+
+	const sourceSummary =
+		coverage.sourceBlockCount === 0
+			? `No collection blocks found in ${collectionFolder}.`
+			: `Using ${coverage.sourceBlockCount} collection block${coverage.sourceBlockCount === 1 ? "" : "s"} across ${coverage.sourceFileCount} note${coverage.sourceFileCount === 1 ? "" : "s"}.`;
+	section.createEl("p", {
+		text: sourceSummary,
+		cls: "mtg-deck-deficit-meta",
+	});
+
+	if (coverage.sourceBlockCount === 0) {
+		section.createEl("p", {
+			text: "Add one or more collection blocks in the configured collection folder to compare this deck against your inventory.",
+			cls: "mtg-card-popover-message",
+		});
+		return;
+	}
+
+	const missingCopyLabel = coverage.missingQuantity === 1 ? "copy" : "copies";
+	const missingCardLabel = coverage.missingCardCount === 1 ? "card" : "cards";
+	const summaryText = `Own ${coverage.coveredQuantity}/${coverage.totalQuantity} copies for this deck. Missing ${coverage.missingQuantity} ${missingCopyLabel} across ${coverage.missingCardCount} ${missingCardLabel}.`;
+	section.createEl("p", {
+		text: summaryText,
+		cls: "mtg-deck-deficit-summary",
+	});
+
+	if (coverage.rows.length === 0) {
+		section.createEl("p", {
+			text: "Your collection fully covers this deck list.",
+			cls: "mtg-deck-deficit-complete",
+		});
+		return;
+	}
+
+	const costPrefix = coverage.hasEstimatedMissingCost ? "~" : "";
+	section.createEl("p", {
+		text: `Estimated missing cost: ${costPrefix}$${coverage.missingCostTotal.toFixed(2)}`,
+		cls: "mtg-deck-deficit-summary",
+	});
+
+	const table = section.createEl("table", { cls: "mtg-deck-deficit-table" });
+	const thead = table.createEl("thead");
+	const headRow = thead.createEl("tr");
+	headRow.createEl("th", { text: "Card" });
+	headRow.createEl("th", { text: "Need" });
+	headRow.createEl("th", { text: "Owned" });
+	headRow.createEl("th", { text: "Missing" });
+	headRow.createEl("th", { text: "Est. cost" });
+
+	const tbody = table.createEl("tbody");
+	for (const row of coverage.rows) {
+		const tr = tbody.createEl("tr");
+		tr.appendChild(createCardNameCell(
+			{
+				lookupName: row.lookupName,
+				quantity: row.needed,
+				cardName: row.cardName,
+				section: "",
+				priceText: row.missingCostText,
+				priceValue: row.missingCostValue,
+			},
+			cache,
+			getSettings,
+			popover,
+			onRetry
+		));
+		tr.createEl("td", { text: String(row.needed), cls: "mtg-deck-deficit-qty" });
+		tr.createEl("td", { text: String(row.owned), cls: "mtg-deck-deficit-qty" });
+		tr.createEl("td", { text: String(row.missing), cls: "mtg-deck-deficit-qty" });
+		tr.createEl("td", { text: row.missingCostText, cls: "mtg-deck-price" });
+	}
+}
+
 export async function renderDeckTable(
+	app: App,
 	containerEl: HTMLElement,
 	source: string,
 	cache: CardCache,
@@ -202,6 +389,7 @@ export async function renderDeckTable(
 	});
 
 	const rows = await mapDeckRows(parsed.cards, cache);
+	const coverage = await buildDeckCollectionCoverage(app, rows, getSettings());
 	if (!loadingEl.isConnected) {
 		return;
 	}
@@ -221,11 +409,12 @@ export async function renderDeckTable(
 		containerEl.addClass("is-updating");
 		try {
 			await cache.evictCardLookup(cardName);
-			await renderDeckTable(containerEl, source, cache, getSettings, popover);
+			await renderDeckTable(app, containerEl, source, cache, getSettings, popover);
 		} finally {
 			containerEl.removeClass("is-updating");
 		}
 	};
 	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry);
 	renderTableFooter(table, rows);
+	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
 }
