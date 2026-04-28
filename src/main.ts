@@ -1,9 +1,11 @@
 import { Extension } from "@codemirror/state";
-import { MarkdownView, Plugin, WorkspaceLeaf } from "obsidian";
+import { MarkdownPostProcessorContext, MarkdownView, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { CardCache } from "./cache/cardCache";
 import { buildEditorExtension } from "./render/cardEditorExtension";
 import { buildReadingViewProcessor, MtgPopover } from "./render/cardImageRenderer";
 import { buildDeckEditorExtension } from "./render/deckEditorExtension";
+import { buildCollectionEditorExtension } from "./render/collectionEditorExtension";
+import { renderCollectionTable } from "./render/collectionRenderer";
 import { renderDeckTable } from "./render/deckRenderer";
 import { DEFAULT_SETTINGS, MTGSettings, MTGSettingTab } from "./settings";
 
@@ -24,8 +26,8 @@ export default class MtgAssistantPlugin extends Plugin {
 		this.registerMarkdownPostProcessor(
 			buildReadingViewProcessor(this.cache, () => this.settings, this.popover)
 		);
-		this.registerMarkdownPostProcessor((el) => {
-			void this.renderDeckBlocks(el);
+		this.registerMarkdownPostProcessor((el, ctx) => {
+			void this.renderStructuredBlocks(el, ctx);
 		});
 
 		this.editorExtensions.push(
@@ -33,6 +35,9 @@ export default class MtgAssistantPlugin extends Plugin {
 		);
 		this.editorExtensions.push(
 			buildDeckEditorExtension(this.cache, () => this.settings, this.popover)
+		);
+		this.editorExtensions.push(
+			buildCollectionEditorExtension(this.cache, () => this.settings, this.popover)
 		);
 		this.registerEditorExtension(this.editorExtensions);
 
@@ -72,18 +77,71 @@ export default class MtgAssistantPlugin extends Plugin {
 		return leaf.view instanceof MarkdownView ? leaf.view : null;
 	}
 
-	private async renderDeckBlocks(el: HTMLElement): Promise<void> {
-		const language = this.settings.deckCodeBlockLanguage;
+	private async renderStructuredBlocks(
+		el: HTMLElement,
+		ctx: MarkdownPostProcessorContext
+	): Promise<void> {
 		for (const codeEl of Array.from(el.querySelectorAll<HTMLElement>("pre > code"))) {
 			const classes = Array.from(codeEl.classList);
-			if (!classes.includes(`language-${language}`)) continue;
-
 			const preEl = codeEl.parentElement;
 			if (!(preEl instanceof HTMLPreElement) || !preEl.parentElement) continue;
 
-			const container = document.createElement("div");
-			preEl.replaceWith(container);
-			await renderDeckTable(container, codeEl.textContent ?? "", this.cache, () => this.settings, this.popover);
+			if (classes.includes(`language-${this.settings.deckCodeBlockLanguage}`)) {
+				const container = document.createElement("div");
+				preEl.replaceWith(container);
+				await renderDeckTable(
+					container,
+					codeEl.textContent ?? "",
+					this.cache,
+					() => this.settings,
+					this.popover
+				);
+				continue;
+			}
+
+			if (classes.includes(`language-${this.settings.collectionCodeBlockLanguage}`)) {
+				const sectionInfo = ctx.getSectionInfo(preEl);
+				const sourcePath = ctx.sourcePath;
+				const container = document.createElement("div");
+				preEl.replaceWith(container);
+				await renderCollectionTable({
+					containerEl: container,
+					source: codeEl.textContent ?? "",
+					cache: this.cache,
+					getSettings: () => this.settings,
+					popover: this.popover,
+					onUpdateSource: async (nextSource) => {
+						await this.updateCollectionBlockInFile(
+							sourcePath,
+							sectionInfo?.lineStart ?? 0,
+							sectionInfo?.text ?? "",
+							nextSource
+						);
+					},
+				});
+			}
 		}
+	}
+
+	private async updateCollectionBlockInFile(
+		sourcePath: string,
+		lineStart: number,
+		sectionText: string,
+		nextSource: string
+	): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(sourcePath);
+		if (!(file instanceof TFile) || !sectionText) {
+			return;
+		}
+
+		const currentContent = await this.app.vault.cachedRead(file);
+		const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
+		const currentLines = currentContent.split(/\r?\n/);
+		const sectionLineCount = sectionText.split(/\r?\n/).length;
+		const nextBlock = `\`\`\`${this.settings.collectionCodeBlockLanguage}\n${nextSource}\n\`\`\``;
+		const nextLines = nextBlock.split("\n");
+
+		currentLines.splice(lineStart, sectionLineCount, ...nextLines);
+		await this.app.vault.modify(file, currentLines.join(eol));
 	}
 }

@@ -2,59 +2,23 @@ import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { MTGSettings } from "../settings";
+import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
+import { createRateLimitWarning } from "./lookupWarning";
 
 interface DeckRow {
+	lookupName: string;
 	quantity: number;
 	cardName: string;
 	section: string;
 	priceText: string;
 	priceValue: number | null;
+	rateLimitedMessage?: string;
 }
 
 interface DeckTotals {
 	totalQuantity: number;
 	totalPrice: number;
 	hasEstimatedPrices: boolean;
-}
-
-const DEFAULT_SECTION_ORDER = [
-	"Commander",
-	"Creatures",
-	"Artifacts",
-	"Enchantments",
-	"Instants",
-	"Sorceries",
-	"Planeswalkers",
-	"Battles",
-	"Lands",
-];
-
-function normalizeSectionName(section: string): string {
-	return section
-		.trim()
-		.toLowerCase()
-		.replace(/\s+/g, " ");
-}
-
-function titleCaseSection(section: string): string {
-	return section
-		.trim()
-		.split(/\s+/)
-		.map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-		.join(" ");
-}
-
-function inferSection(typeLine?: string): string {
-	if (!typeLine) return "Other";
-	if (typeLine.includes("Land")) return "Lands";
-	if (typeLine.includes("Creature")) return "Creatures";
-	if (typeLine.includes("Artifact")) return "Artifacts";
-	if (typeLine.includes("Enchantment")) return "Enchantments";
-	if (typeLine.includes("Instant")) return "Instants";
-	if (typeLine.includes("Sorcery")) return "Sorceries";
-	if (typeLine.includes("Planeswalker")) return "Planeswalkers";
-	if (typeLine.includes("Battle")) return "Battles";
-	return "Other";
 }
 
 function getUnitUsdPrice(result: CardPreviewResult): number | null {
@@ -73,14 +37,6 @@ function formatLinePrice(quantity: number, unitPrice: number | null): string {
 function formatDeckTotal(totals: DeckTotals): string {
 	const prefix = totals.hasEstimatedPrices ? "~" : "";
 	return `${prefix}$${totals.totalPrice.toFixed(2)}`;
-}
-
-function sectionSortKey(section: string): number {
-	const normalized = normalizeSectionName(section);
-	const index = DEFAULT_SECTION_ORDER.findIndex(
-		(candidate) => normalizeSectionName(candidate) === normalized
-	);
-	return index >= 0 ? index : DEFAULT_SECTION_ORDER.length;
 }
 
 function sortRows(rows: DeckRow[]): DeckRow[] {
@@ -117,11 +73,14 @@ async function mapDeckRows(
 			const unitPrice = getUnitUsdPrice(resolved);
 
 			rows[currentIndex] = {
+				lookupName: card.cardName,
 				quantity: card.quantity,
 				cardName: resolved.cardName,
 				section,
 				priceText: formatLinePrice(card.quantity, unitPrice),
 				priceValue: unitPrice,
+				rateLimitedMessage:
+					resolved.status === "rate-limited" ? resolved.message : undefined,
 			};
 		}
 	};
@@ -136,7 +95,8 @@ function createCardNameCell(
 	row: DeckRow,
 	cache: CardCache,
 	getSettings: () => MTGSettings,
-	popover: MtgPopover
+	popover: MtgPopover,
+	onRetry: (cardName: string) => Promise<void>
 ): HTMLTableCellElement {
 	const cell = document.createElement("td");
 	const span = document.createElement("span");
@@ -147,6 +107,9 @@ function createCardNameCell(
 	span.setAttribute("aria-label", `Show Magic card preview for ${row.cardName}`);
 	attachHoverEvents(span, row.cardName, cache, getSettings, popover);
 	cell.appendChild(span);
+	if (row.rateLimitedMessage) {
+		cell.appendChild(createRateLimitWarning(row.rateLimitedMessage, () => onRetry(row.lookupName)));
+	}
 	return cell;
 }
 
@@ -155,7 +118,8 @@ function renderTableRows(
 	rows: DeckRow[],
 	cache: CardCache,
 	getSettings: () => MTGSettings,
-	popover: MtgPopover
+	popover: MtgPopover,
+	onRetry: (cardName: string) => Promise<void>
 ): void {
 	let currentSection = "";
 
@@ -172,7 +136,7 @@ function renderTableRows(
 
 		const tr = tableBody.createEl("tr");
 		tr.createEl("td", { text: String(row.quantity), cls: "mtg-deck-qty" });
-		tr.appendChild(createCardNameCell(row, cache, getSettings, popover));
+		tr.appendChild(createCardNameCell(row, cache, getSettings, popover, onRetry));
 		tr.createEl("td", { text: row.priceText, cls: "mtg-deck-price" });
 	}
 }
@@ -243,6 +207,7 @@ export async function renderDeckTable(
 	}
 
 	containerEl.empty();
+	containerEl.removeClass("is-updating");
 
 	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
 	const thead = table.createEl("thead");
@@ -252,6 +217,15 @@ export async function renderDeckTable(
 	headRow.createEl("th", { text: "Current price" });
 
 	const tbody = table.createEl("tbody");
-	renderTableRows(tbody, rows, cache, getSettings, popover);
+	const onRetry = async (cardName: string): Promise<void> => {
+		containerEl.addClass("is-updating");
+		try {
+			await cache.evictCardLookup(cardName);
+			await renderDeckTable(containerEl, source, cache, getSettings, popover);
+		} finally {
+			containerEl.removeClass("is-updating");
+		}
+	};
+	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry);
 	renderTableFooter(table, rows);
 }

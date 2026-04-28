@@ -7,6 +7,9 @@ export interface MTGSettings {
 	enableReadingView: boolean;
 	enableLivePreview: boolean;
 	deckCodeBlockLanguage: string;
+	collectionCodeBlockLanguage: string;
+	collectionFolder: string;
+	removeCollectionLineAtZero: boolean;
 	commanderMarker: string;
 	staticCacheTTLDays: number;
 	priceCacheHours: number;
@@ -20,6 +23,9 @@ export const DEFAULT_SETTINGS: MTGSettings = {
 	enableReadingView: true,
 	enableLivePreview: true,
 	deckCodeBlockLanguage: "mtg-deck",
+	collectionCodeBlockLanguage: "mtg-collection",
+	collectionFolder: "collection/",
+	removeCollectionLineAtZero: true,
 	commanderMarker: "- Commander:",
 	staticCacheTTLDays: 30,
 	priceCacheHours: 24,
@@ -70,6 +76,33 @@ export class MTGSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName("Collection code block language")
+			.setDesc("Code fence language used for rendered collection lists.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: mtg-collection")
+					.setValue(this.plugin.settings.collectionCodeBlockLanguage)
+					.onChange(async (value) => {
+						this.plugin.settings.collectionCodeBlockLanguage =
+							value.trim() || "mtg-collection";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Collection folder")
+			.setDesc("Vault-relative folder for collection notes. Subfolders are included for future collection features.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: collection/")
+					.setValue(this.plugin.settings.collectionFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.collectionFolder = value.trim() || "collection/";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName("Commander marker")
 			.setDesc("Section label line used to mark a commander block inside a deck list.")
 			.addText((text) =>
@@ -78,6 +111,18 @@ export class MTGSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.commanderMarker)
 					.onChange(async (value) => {
 						this.plugin.settings.commanderMarker = value.trim() || "- Commander:";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Remove collection rows at zero quantity")
+			.setDesc("When disabled, decreasing a collection card to zero keeps the row as 0 instead of deleting it.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.removeCollectionLineAtZero)
+					.onChange(async (value) => {
+						this.plugin.settings.removeCollectionLineAtZero = value;
 						await this.plugin.saveSettings();
 					})
 			);

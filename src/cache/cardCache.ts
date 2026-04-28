@@ -36,6 +36,7 @@ export class CardCache {
 	private memoryCache = new Map<string, MemoryCacheEntry>();
 	private metadata = new Map<string, MetadataEntry>();
 	private blobUrls = new Set<string>();
+	private inflightLookups = new Map<string, Promise<CardPreviewResult>>();
 
 	private readonly cacheDir: string;
 	private readonly imagesDir: string;
@@ -58,6 +59,22 @@ export class CardCache {
 
 	async resolveCard(cardName: string): Promise<CardPreviewResult> {
 		const key = this.normalizeKey(cardName);
+		const inflight = this.inflightLookups.get(key);
+		if (inflight) {
+			return inflight;
+		}
+
+		const lookupPromise = this.resolveCardInternal(cardName, key);
+		this.inflightLookups.set(key, lookupPromise);
+
+		try {
+			return await lookupPromise;
+		} finally {
+			this.inflightLookups.delete(key);
+		}
+	}
+
+	private async resolveCardInternal(cardName: string, key: string): Promise<CardPreviewResult> {
 		const settings = this.getSettings();
 		const meta = this.metadata.get(key);
 		const staticTtlMs = settings.staticCacheTTLDays * 24 * 60 * 60 * 1000;
@@ -173,6 +190,18 @@ export class CardCache {
 				await this.app.vault.adapter.remove(file);
 			}
 		}
+	}
+
+	async evictCardLookup(cardName: string): Promise<void> {
+		const key = this.normalizeKey(cardName);
+		this.memoryCache.delete(key);
+		this.inflightLookups.delete(key);
+		if (!this.metadata.delete(key)) {
+			return;
+		}
+
+		const serialized = Object.fromEntries(this.metadata.entries());
+		await this.app.vault.adapter.write(this.metadataPath, JSON.stringify(serialized, null, 2));
 	}
 
 	destroy(): void {
@@ -328,6 +357,7 @@ export class CardCache {
 
 	private clearMemoryCache(): void {
 		this.memoryCache.clear();
+		this.inflightLookups.clear();
 		for (const url of this.blobUrls) {
 			URL.revokeObjectURL(url);
 		}

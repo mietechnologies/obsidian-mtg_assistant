@@ -14,6 +14,27 @@ const CARD_LINE_PATTERNS = [
 	/^(\d+)\s+(.+?)\s*$/,
 ];
 
+function normalizeParsedCardName(cardName: string): string {
+	const trimmed = cardName.trim();
+
+	const wikiLinkMatch = /^\[\[([^|\]]+)(?:\|[^\]]+)?\]\]$/.exec(trimmed);
+	if (wikiLinkMatch?.[1]) {
+		return wikiLinkMatch[1].trim();
+	}
+
+	const markdownLinkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(trimmed);
+	if (markdownLinkMatch?.[1]) {
+		return markdownLinkMatch[1].trim();
+	}
+
+	const bracketMatch = /^\[([^\]]+)\]$/.exec(trimmed);
+	if (bracketMatch?.[1]) {
+		return bracketMatch[1].trim();
+	}
+
+	return trimmed;
+}
+
 function parseSectionLabel(line: string, commanderMarker?: string): string | null {
 	if (commanderMarker && line.localeCompare(commanderMarker, undefined, { sensitivity: "accent" }) === 0) {
 		return "Commander";
@@ -23,14 +44,14 @@ function parseSectionLabel(line: string, commanderMarker?: string): string | nul
 	return match?.[1]?.trim() ?? null;
 }
 
-function parseCardLine(line: string): ParsedDeckCard | null {
+function parseCardLine(line: string, minimumQuantity: number): ParsedDeckCard | null {
 	for (const pattern of CARD_LINE_PATTERNS) {
 		const match = pattern.exec(line);
 		if (!match) continue;
 
 		const quantity = Number.parseInt(match[1] ?? "", 10);
-		const cardName = match[2]?.trim() ?? "";
-		if (!Number.isFinite(quantity) || quantity <= 0 || !cardName) {
+		const cardName = normalizeParsedCardName(match[2] ?? "");
+		if (!Number.isFinite(quantity) || quantity < minimumQuantity || !cardName) {
 			return null;
 		}
 
@@ -40,7 +61,13 @@ function parseCardLine(line: string): ParsedDeckCard | null {
 	return null;
 }
 
-export function parseDeckList(source: string, commanderMarker?: string): ParsedDeck {
+function parseCardList(
+	source: string,
+	options: {
+		commanderMarker?: string;
+		minimumQuantity: number;
+	}
+): ParsedDeck {
 	const cards = new Map<string, ParsedDeckCard>();
 	let currentSection: string | undefined;
 
@@ -48,13 +75,13 @@ export function parseDeckList(source: string, commanderMarker?: string): ParsedD
 		const line = rawLine.trim();
 		if (!line) continue;
 
-		const section = parseSectionLabel(line, commanderMarker?.trim());
+		const section = parseSectionLabel(line, options.commanderMarker?.trim());
 		if (section) {
 			currentSection = section;
 			continue;
 		}
 
-		const parsedCard = parseCardLine(line);
+		const parsedCard = parseCardLine(line, options.minimumQuantity);
 		if (!parsedCard) continue;
 
 		const key = parsedCard.cardName.toLowerCase();
@@ -74,4 +101,17 @@ export function parseDeckList(source: string, commanderMarker?: string): ParsedD
 	}
 
 	return { cards: Array.from(cards.values()) };
+}
+
+export function parseDeckList(source: string, commanderMarker?: string): ParsedDeck {
+	return parseCardList(source, {
+		commanderMarker,
+		minimumQuantity: 1,
+	});
+}
+
+export function parseCollectionList(source: string): ParsedDeck {
+	return parseCardList(source, {
+		minimumQuantity: 0,
+	});
 }

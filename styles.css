@@ -11,6 +11,28 @@
 	outline: 2px solid var(--interactive-accent);
 }
 
+.mtg-card-warning {
+	display: inline-flex;
+	align-items: center;
+	margin-left: 0.35rem;
+	font-size: 0.95em;
+	cursor: help;
+	padding: 0;
+	border: none;
+	background: transparent;
+}
+
+.mtg-card-warning:hover,
+.mtg-card-warning:focus-visible {
+	transform: translateY(-1px);
+}
+
+.mtg-deck-block.is-updating,
+.mtg-collection-block.is-updating {
+	opacity: 0.7;
+	pointer-events: none;
+}
+
 .mtg-card-popover {
 	position: fixed;
 	z-index: 9999;
@@ -99,6 +121,10 @@
 	margin: 0.5rem 0;
 }
 
+.mtg-collection-widget {
+	margin: 0.5rem 0;
+}
+
 .mtg-deck-footer-row td {
 	border-top: 2px solid var(--background-modifier-border);
 	border-bottom: none;
@@ -106,4 +132,101 @@
 
 .mtg-deck-footer-cell {
 	font-weight: 700;
+}
+
+.mtg-collection-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 0.5rem 0;
+}
+
+.mtg-collection-table th,
+.mtg-collection-table td {
+	padding: 0.4rem 0.6rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	text-align: left;
+	vertical-align: middle;
+}
+
+.mtg-collection-table th:last-child,
+.mtg-collection-table td:last-child {
+	text-align: right;
+}
+
+.mtg-collection-section-cell {
+	padding-top: 1rem;
+	font-weight: 700;
+	font-size: 1.05em;
+	color: var(--text-accent);
+	background: var(--background-secondary);
+	text-align: left !important;
+}
+
+.mtg-collection-qty {
+	width: 6.5rem;
+}
+
+.mtg-collection-qty-controls {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.mtg-collection-qty-value {
+	min-width: 1.5rem;
+	color: var(--text-muted);
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.mtg-collection-stepper {
+	opacity: 0;
+	width: 1.4rem;
+	height: 1.4rem;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	line-height: 1;
+	cursor: pointer;
+	transition: opacity 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.mtg-collection-row:hover .mtg-collection-stepper,
+.mtg-collection-row:focus-within .mtg-collection-stepper {
+	opacity: 1;
+}
+
+.mtg-collection-stepper:hover,
+.mtg-collection-stepper:focus-visible {
+	border-color: var(--interactive-accent);
+	transform: translateY(-1px);
+}
+
+.mtg-color-identity {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2rem;
+	min-height: 1rem;
+}
+
+.mtg-color-identity.is-colorless {
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+.mtg-color-identity-icon {
+	width: 0.95rem;
+	height: 0.95rem;
+	display: block;
+}
+
+.mtg-collection-color {
+	width: 4.5rem;
+}
+
+.mtg-collection-price {
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
 }

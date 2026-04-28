@@ -1,5 +1,11 @@
 import { requestUrl, RequestUrlResponse } from "obsidian";
 
+const SCRYFALL_MIN_REQUEST_INTERVAL_MS = 250;
+const SCRYFALL_RATE_LIMIT_COOLDOWN_MS = 5000;
+let scryfallQueue: Promise<void> = Promise.resolve();
+let lastScryfallRequestAt = 0;
+let scryfallBlockedUntil = 0;
+
 export type CardLookupStatus =
 	| "success"
 	| "not-found"
@@ -70,9 +76,13 @@ function buildErrorResult(response: RequestUrlResponse): CardResult {
 	}
 
 	if (response.status === 429 || response.status === 403) {
+		scryfallBlockedUntil = Math.max(
+			scryfallBlockedUntil,
+			Date.now() + SCRYFALL_RATE_LIMIT_COOLDOWN_MS
+		);
 		return {
 			status: "rate-limited",
-			message: "Scryfall rate limited or blocked the request. Try again later.",
+			message: "Scryfall rate limited or blocked the request. The plugin will pause lookups briefly before trying again.",
 		};
 	}
 
@@ -84,9 +94,40 @@ function buildErrorResult(response: RequestUrlResponse): CardResult {
 
 function getRequestHeaders(): Record<string, string> {
 	return {
-		Accept: "application/json",
+		Accept: "application/json;q=0.9,*/*;q=0.8",
 		"User-Agent": "MTG Assistant/1.0 (Obsidian plugin)",
 	};
+}
+
+async function delay(ms: number): Promise<void> {
+	await new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function scheduleScryfallRequest<T>(task: () => Promise<T>): Promise<T> {
+	const previous = scryfallQueue;
+	let releaseQueue!: () => void;
+	scryfallQueue = new Promise<void>((resolve) => {
+		releaseQueue = resolve;
+	});
+
+	await previous;
+
+	try {
+		const elapsed = Date.now() - lastScryfallRequestAt;
+		if (elapsed < SCRYFALL_MIN_REQUEST_INTERVAL_MS) {
+			await delay(SCRYFALL_MIN_REQUEST_INTERVAL_MS - elapsed);
+		}
+
+		const cooldownRemaining = scryfallBlockedUntil - Date.now();
+		if (cooldownRemaining > 0) {
+			await delay(cooldownRemaining);
+		}
+
+		lastScryfallRequestAt = Date.now();
+		return await task();
+	} finally {
+		releaseQueue();
+	}
 }
 
 function extractMetadata(data: ScryfallCard): CardMetadataFields {
@@ -119,11 +160,21 @@ export async function fetchCard(name: string): Promise<CardResult> {
 	const url = `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`;
 
 	try {
-		const response = await requestUrl({
-			url,
-			throw: false,
-			headers: getRequestHeaders(),
-		});
+		const request = () =>
+			scheduleScryfallRequest(() =>
+				requestUrl({
+					url,
+					throw: false,
+					headers: getRequestHeaders(),
+				})
+			);
+
+		let response = await request();
+		if (response.status === 429 || response.status === 403) {
+			buildErrorResult(response);
+			response = await request();
+		}
+
 		if (response.status >= 400) {
 			return buildErrorResult(response);
 		}
