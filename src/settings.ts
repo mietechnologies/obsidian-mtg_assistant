@@ -7,7 +7,8 @@ export interface MTGSettings {
 	showCardName: boolean;
 	enableReadingView: boolean;
 	enableLivePreview: boolean;
-	cacheTTLDays: number;
+	staticCacheTTLDays: number;
+	priceCacheHours: number;
 }
 
 export const DEFAULT_SETTINGS: MTGSettings = {
@@ -16,7 +17,8 @@ export const DEFAULT_SETTINGS: MTGSettings = {
 	showCardName: false,
 	enableReadingView: true,
 	enableLivePreview: true,
-	cacheTTLDays: 30,
+	staticCacheTTLDays: 30,
+	priceCacheHours: 24,
 };
 
 export class MTGSettingTab extends PluginSettingTab {
@@ -94,15 +96,29 @@ export class MTGSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Cache duration in days")
-			.setDesc("How long lookup results stay cached before checking again.")
+			.setName("Static cache duration in days")
+			.setDesc("How long card metadata and image references stay cached before a full refresh.")
 			.addSlider((slider) =>
 				slider
 					.setLimits(1, 365, 1)
-					.setValue(this.plugin.settings.cacheTTLDays)
+					.setValue(this.plugin.settings.staticCacheTTLDays)
 					.setDynamicTooltip()
 					.onChange(async (value) => {
-						this.plugin.settings.cacheTTLDays = value;
+						this.plugin.settings.staticCacheTTLDays = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Price refresh interval in hours")
+			.setDesc("How often cached prices should be refreshed from the card API.")
+			.addSlider((slider) =>
+				slider
+					.setLimits(1, 168, 1)
+					.setValue(this.plugin.settings.priceCacheHours)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.priceCacheHours = value;
 						await this.plugin.saveSettings();
 					})
 			);

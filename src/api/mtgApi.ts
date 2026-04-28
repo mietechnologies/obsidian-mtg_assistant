@@ -7,16 +7,54 @@ export type CardLookupStatus =
 	| "rate-limited"
 	| "network-error";
 
+export interface CardMetadataFields {
+	manaCost?: string;
+	typeLine?: string;
+	power?: string;
+	toughness?: string;
+	colors?: string[];
+	colorIdentity?: string[];
+	keywords?: string[];
+	legalities?: Record<string, string>;
+	rarity?: string;
+	prices?: {
+		usd?: string | null;
+		usdFoil?: string | null;
+		usdEtched?: string | null;
+		eur?: string | null;
+		eurFoil?: string | null;
+		tix?: string | null;
+	};
+}
+
 export interface CardResult {
 	status: CardLookupStatus;
 	name?: string;
 	imageUrl?: string;
 	message?: string;
+	metadata?: CardMetadataFields;
 }
 
 interface ScryfallCard {
 	object: string;
 	name: string;
+	mana_cost?: string;
+	type_line?: string;
+	power?: string;
+	toughness?: string;
+	colors?: string[];
+	color_identity?: string[];
+	keywords?: string[];
+	legalities?: Record<string, string>;
+	rarity?: string;
+	prices?: {
+		usd?: string | null;
+		usd_foil?: string | null;
+		usd_etched?: string | null;
+		eur?: string | null;
+		eur_foil?: string | null;
+		tix?: string | null;
+	};
 	image_uris?: { normal: string };
 	card_faces?: Array<{ image_uris?: { normal: string } }>;
 	details?: string;
@@ -48,6 +86,30 @@ function getRequestHeaders(): Record<string, string> {
 	return {
 		Accept: "application/json",
 		"User-Agent": "MTG Assistant/1.0 (Obsidian plugin)",
+	};
+}
+
+function extractMetadata(data: ScryfallCard): CardMetadataFields {
+	return {
+		manaCost: data.mana_cost,
+		typeLine: data.type_line,
+		power: data.power,
+		toughness: data.toughness,
+		colors: data.colors,
+		colorIdentity: data.color_identity,
+		keywords: data.keywords,
+		legalities: data.legalities,
+		rarity: data.rarity,
+		prices: data.prices
+			? {
+					usd: data.prices.usd,
+					usdFoil: data.prices.usd_foil,
+					usdEtched: data.prices.usd_etched,
+					eur: data.prices.eur,
+					eurFoil: data.prices.eur_foil,
+					tix: data.prices.tix,
+				}
+			: undefined,
 	};
 }
 
@@ -84,10 +146,16 @@ export async function fetchCard(name: string): Promise<CardResult> {
 				status: "no-image",
 				name: data.name,
 				message: "Card has no preview image available.",
+				metadata: extractMetadata(data),
 			};
 		}
 
-		return { status: "success", name: data.name, imageUrl };
+		return {
+			status: "success",
+			name: data.name,
+			imageUrl,
+			metadata: extractMetadata(data),
+		};
 	} catch (error: unknown) {
 		const message = error instanceof Error ? error.message : "Unknown network error.";
 		return {

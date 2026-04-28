@@ -1,13 +1,16 @@
 import { App, requestUrl, RequestUrlResponse } from "obsidian";
-import { CardLookupStatus, fetchCard } from "../api/mtgApi";
+import { CardLookupStatus, CardMetadataFields, fetchCard } from "../api/mtgApi";
 import { MTGSettings } from "../settings";
 
 interface MetadataEntry {
 	timestamp: number;
+	staticTimestamp?: number;
+	priceTimestamp?: number;
 	status: CardLookupStatus | "download-error";
 	imageUrl?: string;
 	resolvedName?: string;
 	message?: string;
+	card?: CardMetadataFields;
 }
 
 interface MemoryCacheEntry {
@@ -15,6 +18,7 @@ interface MemoryCacheEntry {
 	imageSrc?: string;
 	resolvedName?: string;
 	message?: string;
+	card?: CardMetadataFields;
 }
 
 export interface CardPreviewResult {
@@ -22,6 +26,7 @@ export interface CardPreviewResult {
 	cardName: string;
 	imageSrc?: string;
 	message?: string;
+	card?: CardMetadataFields;
 }
 
 // Manages in-memory and on-disk card image caching.
@@ -53,43 +58,73 @@ export class CardCache {
 
 	async resolveCard(cardName: string): Promise<CardPreviewResult> {
 		const key = this.normalizeKey(cardName);
-		const cached = this.memoryCache.get(key);
-		if (cached) {
-			return this.toPreviewResult(cardName, cached);
-		}
-
 		const settings = this.getSettings();
-		const ttlMs = settings.cacheTTLDays * 24 * 60 * 60 * 1000;
 		const meta = this.metadata.get(key);
+		const staticTtlMs = settings.staticCacheTTLDays * 24 * 60 * 60 * 1000;
+		const priceTtlMs = settings.priceCacheHours * 60 * 60 * 1000;
 
-		if (meta && Date.now() - meta.timestamp < ttlMs) {
-			const fromMetadata = await this.resolveFromMetadata(cardName, key, meta);
-			if (fromMetadata) {
-				return fromMetadata;
+		if (meta && this.isFresh(this.getStaticTimestamp(meta), staticTtlMs)) {
+			const cachedEntry = await this.resolveFromMetadata(key, meta);
+			if (cachedEntry) {
+				if (!this.isPriceRefreshNeeded(meta, priceTtlMs) || meta.status !== "success") {
+					return this.toPreviewResult(cardName, cachedEntry);
+				}
+
+				const refreshed = await fetchCard(cardName);
+				if (refreshed.status === "success" && refreshed.imageUrl) {
+					const mergedEntry: MemoryCacheEntry = {
+						...cachedEntry,
+						status: "success",
+						resolvedName: refreshed.name,
+						card: refreshed.metadata,
+						message: undefined,
+					};
+					this.memoryCache.set(key, mergedEntry);
+					await this.setMetadata(key, {
+						...meta,
+						status: "success",
+						imageUrl: refreshed.imageUrl,
+						resolvedName: refreshed.name,
+						card: refreshed.metadata,
+						priceTimestamp: Date.now(),
+					});
+					return this.toPreviewResult(cardName, mergedEntry);
+				}
+
+				return this.toPreviewResult(cardName, cachedEntry);
 			}
 		}
 
 		const fetched = await fetchCard(cardName);
+		const now = Date.now();
 		if (fetched.status !== "success" || !fetched.imageUrl) {
 			const entry: MemoryCacheEntry = {
 				status: fetched.status,
 				resolvedName: fetched.name,
 				message: fetched.message,
+				card: fetched.metadata,
 			};
 			this.memoryCache.set(key, entry);
 			await this.setMetadata(key, {
-				timestamp: Date.now(),
+				timestamp: now,
+				staticTimestamp: now,
+				priceTimestamp: now,
 				status: fetched.status,
 				imageUrl: fetched.imageUrl,
 				resolvedName: fetched.name,
 				message: fetched.message,
+				card: fetched.metadata,
 			});
 			return this.toPreviewResult(cardName, entry);
 		}
 
 		const imagePath = this.getImagePath(key);
-		const download = await this.downloadImage(fetched.imageUrl, imagePath);
-		if (!download.ok) {
+		let imageSrc: string;
+		if (await this.app.vault.adapter.exists(imagePath)) {
+			imageSrc = await this.readAsBlobUrl(imagePath);
+		} else {
+			const download = await this.downloadImage(fetched.imageUrl, imagePath);
+			if (!download.ok) {
 			const entry: MemoryCacheEntry = {
 				status: "download-error",
 				resolvedName: fetched.name,
@@ -99,18 +134,23 @@ export class CardCache {
 			return this.toPreviewResult(cardName, entry);
 		}
 
-		const imageSrc = await this.readAsBlobUrl(imagePath, download.contentType);
+			imageSrc = await this.readAsBlobUrl(imagePath, download.contentType);
+		}
 		const entry: MemoryCacheEntry = {
 			status: "success",
 			imageSrc,
 			resolvedName: fetched.name,
+			card: fetched.metadata,
 		};
 		this.memoryCache.set(key, entry);
 		await this.setMetadata(key, {
-			timestamp: Date.now(),
+			timestamp: now,
+			staticTimestamp: now,
+			priceTimestamp: now,
 			status: "success",
 			imageUrl: fetched.imageUrl,
 			resolvedName: fetched.name,
+			card: fetched.metadata,
 		});
 
 		return this.toPreviewResult(cardName, entry);
@@ -145,22 +185,25 @@ export class CardCache {
 			cardName: entry.resolvedName ?? cardName,
 			imageSrc: entry.imageSrc,
 			message: entry.message ?? this.getDefaultMessage(entry.status, entry.resolvedName ?? cardName),
+			card: entry.card,
 		};
 	}
 
-	private async resolveFromMetadata(
-		cardName: string,
-		key: string,
-		meta: MetadataEntry
-	): Promise<CardPreviewResult | null> {
+	private async resolveFromMetadata(key: string, meta: MetadataEntry): Promise<MemoryCacheEntry | null> {
+		const cached = this.memoryCache.get(key);
+		if (cached) {
+			return cached;
+		}
+
 		if (meta.status !== "success") {
 			const entry: MemoryCacheEntry = {
 				status: meta.status,
 				resolvedName: meta.resolvedName,
 				message: meta.message,
+				card: meta.card,
 			};
 			this.memoryCache.set(key, entry);
-			return this.toPreviewResult(cardName, entry);
+			return entry;
 		}
 
 		const imagePath = this.getImagePath(key);
@@ -173,9 +216,10 @@ export class CardCache {
 			status: "success",
 			imageSrc,
 			resolvedName: meta.resolvedName,
+			card: meta.card,
 		};
 		this.memoryCache.set(key, entry);
-		return this.toPreviewResult(cardName, entry);
+		return entry;
 	}
 
 	private normalizeKey(name: string): string {
@@ -206,13 +250,22 @@ export class CardCache {
 				if (!value) continue;
 
 				if ("status" in value && value.status) {
+					const timestamp = value.staticTimestamp ?? value.timestamp;
 					this.metadata.set(key, value);
+					if (!value.staticTimestamp && timestamp) {
+						value.staticTimestamp = timestamp;
+					}
+					if (!value.priceTimestamp && timestamp) {
+						value.priceTimestamp = timestamp;
+					}
 					continue;
 				}
 
 				if (value.found === false) {
 					this.metadata.set(key, {
 						timestamp: value.timestamp,
+						staticTimestamp: value.timestamp,
+						priceTimestamp: value.timestamp,
 						status: "not-found",
 						message: "Card not found in cached legacy metadata.",
 					});
@@ -279,6 +332,22 @@ export class CardCache {
 			URL.revokeObjectURL(url);
 		}
 		this.blobUrls.clear();
+	}
+
+	private getStaticTimestamp(meta: MetadataEntry): number | undefined {
+		return meta.staticTimestamp ?? meta.timestamp;
+	}
+
+	private getPriceTimestamp(meta: MetadataEntry): number | undefined {
+		return meta.priceTimestamp ?? meta.staticTimestamp ?? meta.timestamp;
+	}
+
+	private isFresh(timestamp: number | undefined, ttlMs: number): boolean {
+		return timestamp !== undefined && Date.now() - timestamp < ttlMs;
+	}
+
+	private isPriceRefreshNeeded(meta: MetadataEntry, ttlMs: number): boolean {
+		return !this.isFresh(this.getPriceTimestamp(meta), ttlMs);
 	}
 
 	private getDefaultMessage(
