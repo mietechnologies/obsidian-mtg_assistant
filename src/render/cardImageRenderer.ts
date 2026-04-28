@@ -2,6 +2,21 @@ import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { buildCardReferenceRegex } from "../parser/cardReferenceParser";
 import { MTGSettings } from "../settings";
 
+type DisplayLegalityStatus = "legal" | "banned" | "restricted";
+
+const POPOVER_LEGALITY_FORMATS: Array<{ key: string; label: string }> = [
+	{ key: "standard", label: "Standard" },
+	{ key: "pioneer", label: "Pioneer" },
+	{ key: "modern", label: "Modern" },
+	{ key: "pauper", label: "Pauper" },
+	{ key: "commander", label: "Commander" },
+	{ key: "brawl", label: "Brawl" },
+	{ key: "duel", label: "Duel" },
+	{ key: "oathbreaker", label: "Oathbreaker" },
+	{ key: "legacy", label: "Legacy" },
+	{ key: "vintage", label: "Vintage" },
+];
+
 function formatCardPrice(result: CardPreviewResult, settings: MTGSettings): string | null {
 	const prices = result.card?.prices;
 	if (!prices) {
@@ -39,6 +54,52 @@ function formatCardPrice(result: CardPreviewResult, settings: MTGSettings): stri
 	}
 
 	return null;
+}
+
+function normalizeLegalityStatus(status: string | undefined): DisplayLegalityStatus | null {
+	switch (status) {
+		case "legal":
+			return "legal";
+		case "banned":
+			return "banned";
+		case "restricted":
+			return "restricted";
+		default:
+			return null;
+	}
+}
+
+function renderLegalitySection(container: HTMLElement, result: CardPreviewResult): void {
+	const legalities = result.card?.legalities;
+	if (!legalities) {
+		return;
+	}
+
+	const formats = POPOVER_LEGALITY_FORMATS
+		.map(({ key, label }) => {
+			const status = normalizeLegalityStatus(legalities[key]);
+			return status ? { label, status } : null;
+		})
+		.filter((entry): entry is { label: string; status: DisplayLegalityStatus } => entry !== null);
+
+	if (formats.length === 0) {
+		return;
+	}
+
+	const section = container.createEl("div", { cls: "mtg-card-popover-legalities" });
+	section.createEl("p", {
+		text: "Legality",
+		cls: "mtg-card-popover-section-title",
+	});
+
+	const grid = section.createEl("div", { cls: "mtg-card-popover-legality-grid" });
+	for (const format of formats) {
+		const pill = grid.createEl("span", {
+			text: format.label,
+			cls: `mtg-card-popover-legality-pill is-${format.status}`,
+		});
+		pill.setAttribute("aria-label", `${format.label}: ${format.status}`);
+	}
 }
 
 export class MtgPopover {
@@ -86,6 +147,8 @@ export class MtgPopover {
 					cls: "mtg-card-popover-price",
 				});
 			}
+
+			renderLegalitySection(this.el, result);
 		} else {
 			this.el.createEl("p", {
 				text: result.message ?? "Card preview unavailable.",

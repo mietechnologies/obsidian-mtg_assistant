@@ -1,7 +1,5 @@
 # TODO
 
-- Richer card popover:
-  Show more cached metadata in the hover preview, such as mana cost, type line, rarity, power/toughness, and legality context.
 - Printing and set selection:
   Support choosing a preferred printing or set so deck and collection workflows can target the correct version of a card.
 - Deck validation and analytics:
