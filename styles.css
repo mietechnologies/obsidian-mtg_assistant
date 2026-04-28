@@ -1,8 +1,53 @@
-/*
+.mtg-card-ref {
+	color: var(--link-color);
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	cursor: pointer;
+	border-radius: 2px;
+	outline-offset: 2px;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.mtg-card-ref:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+}
 
-If your plugin does not need CSS, delete this file.
+.mtg-card-popover {
+	position: fixed;
+	z-index: 9999;
+	display: none;
+	max-width: min(320px, calc(100vw - 32px));
+	padding: 8px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+	pointer-events: auto;
+}
 
-*/
+.mtg-card-popover.is-visible {
+	display: block;
+}
+
+.mtg-card-popover-img {
+	display: block;
+	max-width: 100%;
+	border-radius: 8px;
+}
+
+.mtg-card-popover-name,
+.mtg-card-popover-message {
+	margin: 6px 0 0;
+	text-align: center;
+	font-size: 0.85em;
+}
+
+.mtg-card-popover-name {
+	color: var(--text-muted);
+}
+
+.mtg-card-popover-message {
+	margin: 0;
+	max-width: 240px;
+	color: var(--text-normal);
+	line-height: 1.4;
+}
