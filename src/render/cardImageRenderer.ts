@@ -2,6 +2,45 @@ import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { buildCardReferenceRegex } from "../parser/cardReferenceParser";
 import { MTGSettings } from "../settings";
 
+function formatCardPrice(result: CardPreviewResult, settings: MTGSettings): string | null {
+	const prices = result.card?.prices;
+	if (!prices) {
+		return null;
+	}
+
+	const segments: string[] = [];
+
+	if (prices.usd) {
+		segments.push(`$${prices.usd}`);
+	}
+
+	if (prices.usdFoil) {
+		segments.push(`$${prices.usdFoil} ${settings.foilPriceSuffix}`);
+	}
+
+	if (prices.usdEtched) {
+		segments.push(`$${prices.usdEtched} ${settings.etchedPriceSuffix}`);
+	}
+
+	if (segments.length > 0) {
+		return segments.join(" | ");
+	}
+
+	if (prices.eur) {
+		return `EUR ${prices.eur}`;
+	}
+
+	if (prices.eurFoil) {
+		return `EUR ${prices.eurFoil} ${settings.foilPriceSuffix}`;
+	}
+
+	if (prices.tix) {
+		return `${prices.tix} tix`;
+	}
+
+	return null;
+}
+
 export class MtgPopover {
 	private el: HTMLElement;
 	private hideTimer: number | null = null;
@@ -38,12 +77,13 @@ export class MtgPopover {
 			const img = this.el.createEl("img", { cls: "mtg-card-popover-img" });
 			img.src = result.imageSrc;
 			img.alt = `${result.cardName} card preview`;
-			img.style.maxWidth = settings.maxImageWidth;
+			img.style.maxWidth = `${settings.maxImageWidth}px`;
 
-			if (settings.showCardName) {
+			const price = formatCardPrice(result, settings);
+			if (price) {
 				this.el.createEl("p", {
-					text: result.cardName,
-					cls: "mtg-card-popover-name",
+					text: price,
+					cls: "mtg-card-popover-price",
 				});
 			}
 		} else {

@@ -3,26 +3,30 @@ import MtgAssistantPlugin from "./main";
 
 export interface MTGSettings {
 	cardPrefix: string;
-	maxImageWidth: string;
-	showCardName: boolean;
+	maxImageWidth: number;
 	enableReadingView: boolean;
 	enableLivePreview: boolean;
 	staticCacheTTLDays: number;
 	priceCacheHours: number;
+	foilPriceSuffix: string;
+	etchedPriceSuffix: string;
 }
 
 export const DEFAULT_SETTINGS: MTGSettings = {
 	cardPrefix: "mtg",
-	maxImageWidth: "265px",
-	showCardName: false,
+	maxImageWidth: 256,
 	enableReadingView: true,
 	enableLivePreview: true,
 	staticCacheTTLDays: 30,
 	priceCacheHours: 24,
+	foilPriceSuffix: "F",
+	etchedPriceSuffix: "E",
 };
 
 export class MTGSettingTab extends PluginSettingTab {
 	plugin: MtgAssistantPlugin;
+
+	private readonly imageWidthOptions = [128, 256, 512];
 
 	constructor(app: App, plugin: MtgAssistantPlugin) {
 		super(app, plugin);
@@ -50,25 +54,14 @@ export class MTGSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Maximum image width")
-			.setDesc("CSS width value for card images in the hover popover.")
-			.addText((text) =>
-				text
-					.setPlaceholder("265px")
-					.setValue(this.plugin.settings.maxImageWidth)
+			.setDesc("Maximum width for card images in the hover popover.")
+			.addSlider((slider) =>
+				slider
+					.setLimits(0, this.imageWidthOptions.length - 1, 1)
+					.setValue(this.getImageWidthIndex(this.plugin.settings.maxImageWidth))
+					.setDynamicTooltip()
 					.onChange(async (value) => {
-						this.plugin.settings.maxImageWidth = value.trim() || "265px";
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Show card name under image")
-			.setDesc("Display the resolved card name below the image in the hover popover.")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showCardName)
-					.onChange(async (value) => {
-						this.plugin.settings.showCardName = value;
+						this.plugin.settings.maxImageWidth = this.imageWidthOptions[value] ?? 256;
 						await this.plugin.saveSettings();
 					})
 			);
@@ -98,13 +91,13 @@ export class MTGSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Static cache duration in days")
 			.setDesc("How long card metadata and image references stay cached before a full refresh.")
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 365, 1)
-					.setValue(this.plugin.settings.staticCacheTTLDays)
-					.setDynamicTooltip()
+			.addText((text) =>
+				text
+					.setPlaceholder("30")
+					.setValue(String(this.plugin.settings.staticCacheTTLDays))
 					.onChange(async (value) => {
-						this.plugin.settings.staticCacheTTLDays = value;
+						const parsed = this.parsePositiveInt(value, this.plugin.settings.staticCacheTTLDays);
+						this.plugin.settings.staticCacheTTLDays = parsed;
 						await this.plugin.saveSettings();
 					})
 			);
@@ -112,13 +105,39 @@ export class MTGSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Price refresh interval in hours")
 			.setDesc("How often cached prices should be refreshed from the card API.")
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 168, 1)
-					.setValue(this.plugin.settings.priceCacheHours)
-					.setDynamicTooltip()
+			.addText((text) =>
+				text
+					.setPlaceholder("24")
+					.setValue(String(this.plugin.settings.priceCacheHours))
 					.onChange(async (value) => {
-						this.plugin.settings.priceCacheHours = value;
+						const parsed = this.parsePositiveInt(value, this.plugin.settings.priceCacheHours);
+						this.plugin.settings.priceCacheHours = parsed;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Foil price suffix")
+			.setDesc("Short label appended to foil prices in the preview.")
+			.addText((text) =>
+				text
+					.setPlaceholder("F")
+					.setValue(this.plugin.settings.foilPriceSuffix)
+					.onChange(async (value) => {
+						this.plugin.settings.foilPriceSuffix = value.trim() || "F";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Etched price suffix")
+			.setDesc("Short label appended to etched prices in the preview.")
+			.addText((text) =>
+				text
+					.setPlaceholder("E")
+					.setValue(this.plugin.settings.etchedPriceSuffix)
+					.onChange(async (value) => {
+						this.plugin.settings.etchedPriceSuffix = value.trim() || "E";
 						await this.plugin.saveSettings();
 					})
 			);
@@ -147,5 +166,15 @@ export class MTGSettingTab extends PluginSettingTab {
 							new Notice("Image cache cleared.");
 						})
 				);
+	}
+
+	private getImageWidthIndex(width: number): number {
+		const index = this.imageWidthOptions.indexOf(width);
+		return index >= 0 ? index : 1;
+	}
+
+	private parsePositiveInt(value: string, fallback: number): number {
+		const parsed = Number.parseInt(value.trim(), 10);
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 	}
 }

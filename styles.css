@@ -35,6 +35,7 @@
 }
 
 .mtg-card-popover-name,
+.mtg-card-popover-price,
 .mtg-card-popover-message {
 	margin: 6px 0 0;
 	text-align: center;
@@ -43,6 +44,11 @@
 
 .mtg-card-popover-name {
 	color: var(--text-muted);
+}
+
+.mtg-card-popover-price {
+	color: var(--text-accent);
+	font-weight: 600;
 }
 
 .mtg-card-popover-message {
