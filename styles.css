@@ -79,8 +79,10 @@
 .mtg-deck-section-cell {
 	padding-top: 1rem;
 	font-weight: 700;
+	font-size: 1.05em;
 	color: var(--text-accent);
 	background: var(--background-secondary);
+	text-align: left !important;
 }
 
 .mtg-deck-qty {
@@ -95,4 +97,13 @@
 
 .mtg-deck-widget {
 	margin: 0.5rem 0;
+}
+
+.mtg-deck-footer-row td {
+	border-top: 2px solid var(--background-modifier-border);
+	border-bottom: none;
+}
+
+.mtg-deck-footer-cell {
+	font-weight: 700;
 }

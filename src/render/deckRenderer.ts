@@ -11,6 +11,12 @@ interface DeckRow {
 	priceValue: number | null;
 }
 
+interface DeckTotals {
+	totalQuantity: number;
+	totalPrice: number;
+	hasEstimatedPrices: boolean;
+}
+
 const DEFAULT_SECTION_ORDER = [
 	"Commander",
 	"Creatures",
@@ -62,6 +68,11 @@ function getUnitUsdPrice(result: CardPreviewResult): number | null {
 function formatLinePrice(quantity: number, unitPrice: number | null): string {
 	if (unitPrice === null) return "N/A";
 	return `$${(quantity * unitPrice).toFixed(2)}`;
+}
+
+function formatDeckTotal(totals: DeckTotals): string {
+	const prefix = totals.hasEstimatedPrices ? "~" : "";
+	return `${prefix}$${totals.totalPrice.toFixed(2)}`;
 }
 
 function sectionSortKey(section: string): number {
@@ -166,6 +177,42 @@ function renderTableRows(
 	}
 }
 
+function calculateTotals(rows: DeckRow[]): DeckTotals {
+	let totalQuantity = 0;
+	let totalPrice = 0;
+	let hasEstimatedPrices = false;
+
+	for (const row of rows) {
+		totalQuantity += row.quantity;
+		if (row.priceValue === null) {
+			hasEstimatedPrices = true;
+			continue;
+		}
+
+		totalPrice += row.quantity * row.priceValue;
+	}
+
+	return { totalQuantity, totalPrice, hasEstimatedPrices };
+}
+
+function renderTableFooter(table: HTMLElement, rows: DeckRow[]): void {
+	const totals = calculateTotals(rows);
+	const tfoot = table.createEl("tfoot");
+	const footerRow = tfoot.createEl("tr", { cls: "mtg-deck-footer-row" });
+	footerRow.createEl("td", {
+		text: String(totals.totalQuantity),
+		cls: "mtg-deck-qty mtg-deck-footer-cell",
+	});
+	footerRow.createEl("td", {
+		text: "Total",
+		cls: "mtg-deck-footer-cell",
+	});
+	footerRow.createEl("td", {
+		text: formatDeckTotal(totals),
+		cls: "mtg-deck-price mtg-deck-footer-cell",
+	});
+}
+
 export async function renderDeckTable(
 	containerEl: HTMLElement,
 	source: string,
@@ -206,4 +253,5 @@ export async function renderDeckTable(
 
 	const tbody = table.createEl("tbody");
 	renderTableRows(tbody, rows, cache, getSettings, popover);
+	renderTableFooter(table, rows);
 }
