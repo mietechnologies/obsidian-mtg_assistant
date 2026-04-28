@@ -3,6 +3,8 @@ import { MarkdownView, Plugin, WorkspaceLeaf } from "obsidian";
 import { CardCache } from "./cache/cardCache";
 import { buildEditorExtension } from "./render/cardEditorExtension";
 import { buildReadingViewProcessor, MtgPopover } from "./render/cardImageRenderer";
+import { buildDeckEditorExtension } from "./render/deckEditorExtension";
+import { renderDeckTable } from "./render/deckRenderer";
 import { DEFAULT_SETTINGS, MTGSettings, MTGSettingTab } from "./settings";
 
 export default class MtgAssistantPlugin extends Plugin {
@@ -22,9 +24,15 @@ export default class MtgAssistantPlugin extends Plugin {
 		this.registerMarkdownPostProcessor(
 			buildReadingViewProcessor(this.cache, () => this.settings, this.popover)
 		);
+		this.registerMarkdownPostProcessor((el) => {
+			void this.renderDeckBlocks(el);
+		});
 
 		this.editorExtensions.push(
 			buildEditorExtension(this.cache, () => this.settings, this.popover)
+		);
+		this.editorExtensions.push(
+			buildDeckEditorExtension(this.cache, () => this.settings, this.popover)
 		);
 		this.registerEditorExtension(this.editorExtensions);
 
@@ -62,5 +70,20 @@ export default class MtgAssistantPlugin extends Plugin {
 
 	private getMarkdownView(leaf: WorkspaceLeaf): MarkdownView | null {
 		return leaf.view instanceof MarkdownView ? leaf.view : null;
+	}
+
+	private async renderDeckBlocks(el: HTMLElement): Promise<void> {
+		const language = this.settings.deckCodeBlockLanguage;
+		for (const codeEl of Array.from(el.querySelectorAll<HTMLElement>("pre > code"))) {
+			const classes = Array.from(codeEl.classList);
+			if (!classes.includes(`language-${language}`)) continue;
+
+			const preEl = codeEl.parentElement;
+			if (!(preEl instanceof HTMLPreElement) || !preEl.parentElement) continue;
+
+			const container = document.createElement("div");
+			preEl.replaceWith(container);
+			await renderDeckTable(container, codeEl.textContent ?? "", this.cache, () => this.settings, this.popover);
+		}
 	}
 }

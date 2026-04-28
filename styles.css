@@ -57,3 +57,42 @@
 	color: var(--text-normal);
 	line-height: 1.4;
 }
+
+.mtg-deck-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 0.5rem 0;
+}
+
+.mtg-deck-table th,
+.mtg-deck-table td {
+	padding: 0.4rem 0.6rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	text-align: left;
+}
+
+.mtg-deck-table th:last-child,
+.mtg-deck-table td:last-child {
+	text-align: right;
+}
+
+.mtg-deck-section-cell {
+	padding-top: 1rem;
+	font-weight: 700;
+	color: var(--text-accent);
+	background: var(--background-secondary);
+}
+
+.mtg-deck-qty {
+	width: 3rem;
+	color: var(--text-muted);
+}
+
+.mtg-deck-price {
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+.mtg-deck-widget {
+	margin: 0.5rem 0;
+}

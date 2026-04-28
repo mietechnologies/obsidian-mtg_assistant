@@ -6,6 +6,8 @@ export interface MTGSettings {
 	maxImageWidth: number;
 	enableReadingView: boolean;
 	enableLivePreview: boolean;
+	deckCodeBlockLanguage: string;
+	commanderMarker: string;
 	staticCacheTTLDays: number;
 	priceCacheHours: number;
 	foilPriceSuffix: string;
@@ -17,6 +19,8 @@ export const DEFAULT_SETTINGS: MTGSettings = {
 	maxImageWidth: 256,
 	enableReadingView: true,
 	enableLivePreview: true,
+	deckCodeBlockLanguage: "mtg-deck",
+	commanderMarker: "- Commander:",
 	staticCacheTTLDays: 30,
 	priceCacheHours: 24,
 	foilPriceSuffix: "F",
@@ -48,6 +52,32 @@ export class MTGSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.cardPrefix)
 					.onChange(async (value) => {
 						this.plugin.settings.cardPrefix = value.trim() || "mtg";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Deck code block language")
+			.setDesc("Code fence language used for rendered deck lists.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: mtg-deck")
+					.setValue(this.plugin.settings.deckCodeBlockLanguage)
+					.onChange(async (value) => {
+						this.plugin.settings.deckCodeBlockLanguage = value.trim() || "mtg-deck";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Commander marker")
+			.setDesc("Section label line used to mark a commander block inside a deck list.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: - commander:")
+					.setValue(this.plugin.settings.commanderMarker)
+					.onChange(async (value) => {
+						this.plugin.settings.commanderMarker = value.trim() || "- Commander:";
 						await this.plugin.saveSettings();
 					})
 			);
