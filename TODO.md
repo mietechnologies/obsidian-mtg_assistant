@@ -2,8 +2,6 @@
 
 - Printing and set selection:
   Support choosing a preferred printing or set so deck and collection workflows can target the correct version of a card.
-- Deck validation and analytics:
-  Add commander legality checks, singleton validation, card-count validation, mana curve, color identity summary, and other deckbuilding insights.
 - Deck list metadata:
   Allow a deck list to declare its format and surface derived metadata such as mana curve, color identity, legality, and related summary details in the rendered output.
 - Collection rollups across notes:

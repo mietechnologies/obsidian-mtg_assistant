@@ -5,7 +5,7 @@ import tcgPlayerSvg from "../img/tcg_player.svg";
 import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { MTGSettings } from "../settings";
-import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
+import { inferSection, normalizeSectionName, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createColorIdentityElement } from "./colorIdentity";
 import { createInlineWarning, createRateLimitWarning } from "./lookupWarning";
 
@@ -94,6 +94,11 @@ interface DeckAnalytics {
 	manaCurve: AnalyticsBucket[];
 	typeDistribution: AnalyticsBucket[];
 	keywords: KeywordAnalyticsRow[];
+}
+
+interface DeckValidationIssue {
+	severity: "error" | "warning";
+	message: string;
 }
 
 function getUnitUsdPrice(result: CardPreviewResult): number | null {
@@ -208,6 +213,89 @@ function formatAverageManaValue(value: number | null): string {
 function formatPercent(value: number, total: number): string {
 	if (total === 0) return "0%";
 	return `${Math.round((value / total) * 100)}%`;
+}
+
+function isCommanderSection(section: string): boolean {
+	return normalizeSectionName(section) === "commander";
+}
+
+function isBasicLand(row: DeckRow): boolean {
+	const normalizedTypeLine = row.typeLine?.toLowerCase() ?? "";
+	return normalizedTypeLine.includes("basic") && normalizedTypeLine.includes("land");
+}
+
+function formatCardQuantityList(rows: Array<{ cardName: string; quantity: number }>, limit = 4): string {
+	const slice = rows.slice(0, limit).map((row) => `${row.cardName} (${row.quantity})`);
+	if (rows.length > limit) {
+		slice.push(`+${rows.length - limit} more`);
+	}
+	return slice.join(", ");
+}
+
+function buildDeckValidation(rows: DeckRow[], deckFormat: DeckFormat | null): DeckValidationIssue[] {
+	if (!deckFormat) {
+		return [];
+	}
+
+	const issues: DeckValidationIssue[] = [];
+	const totalCards = rows.reduce((sum, row) => sum + row.quantity, 0);
+	const exactSizeByFormat: Partial<Record<DeckFormat, number>> = {
+		commander: 100,
+		brawl: 60,
+		oathbreaker: 60,
+		duel: 100,
+	};
+	const requiresCommanderSection = new Set<DeckFormat>([
+		"commander",
+		"brawl",
+		"oathbreaker",
+		"duel",
+	]);
+	const singletonFormats = requiresCommanderSection;
+
+	const expectedSize = exactSizeByFormat[deckFormat];
+	if (expectedSize !== undefined && totalCards !== expectedSize) {
+		issues.push({
+			severity: "error",
+			message: `${formatDeckFormatLabel(deckFormat)} decks should contain exactly ${expectedSize} cards. Found ${totalCards}.`,
+		});
+	}
+
+	if (requiresCommanderSection.has(deckFormat)) {
+		const commanderCount = rows
+			.filter((row) => isCommanderSection(row.section))
+			.reduce((sum, row) => sum + row.quantity, 0);
+		if (commanderCount !== 1) {
+			issues.push({
+				severity: "error",
+				message: `${formatDeckFormatLabel(deckFormat)} decks should have exactly 1 commander entry. Found ${commanderCount}.`,
+			});
+		}
+	}
+
+	if (singletonFormats.has(deckFormat)) {
+		const duplicates = rows.filter((row) => row.quantity > 1 && !isBasicLand(row));
+		if (duplicates.length > 0) {
+			issues.push({
+				severity: "error",
+				message: `${formatDeckFormatLabel(deckFormat)} decks should be singleton outside basic lands. Duplicate entries: ${formatCardQuantityList(duplicates)}.`,
+			});
+		}
+	}
+
+	if (deckFormat === "vintage") {
+		const restrictedOverages = rows.filter(
+			(row) => row.deckLegalityStatus === "restricted" && row.quantity > 1
+		);
+		if (restrictedOverages.length > 0) {
+			issues.push({
+				severity: "error",
+				message: `Vintage restricted cards exceed the allowed quantity of 1: ${formatCardQuantityList(restrictedOverages)}.`,
+			});
+		}
+	}
+
+	return issues;
 }
 
 function createSvgElement(svgMarkup: string): SVGElement | null {
@@ -702,9 +790,45 @@ function renderKeywordTable(containerEl: HTMLElement, keywords: KeywordAnalytics
 	}
 }
 
+function renderDeckValidationPanel(
+	containerEl: HTMLElement,
+	issues: DeckValidationIssue[],
+	deckFormat: DeckFormat
+): void {
+	const section = containerEl.createEl("section", {
+		cls: "mtg-deck-analytics-panel mtg-deck-validation-panel",
+	});
+	section.createEl("h5", {
+		text: "Validation",
+		cls: "mtg-deck-analytics-subheading",
+	});
+
+	if (issues.length === 0) {
+		section.createEl("p", {
+			text: `No validation issues found for ${formatDeckFormatLabel(deckFormat)}.`,
+			cls: "mtg-deck-validation-status is-valid",
+		});
+		return;
+	}
+
+	section.createEl("p", {
+		text: `${issues.length} validation issue${issues.length === 1 ? "" : "s"} found.`,
+		cls: "mtg-deck-validation-status is-invalid",
+	});
+
+	const list = section.createEl("ul", { cls: "mtg-deck-validation-list" });
+	for (const issue of issues) {
+		const item = list.createEl("li", {
+			cls: `mtg-deck-validation-item is-${issue.severity}`,
+		});
+		item.textContent = issue.message;
+	}
+}
+
 function renderDeckAnalyticsSection(
 	containerEl: HTMLElement,
 	analytics: DeckAnalytics,
+	validationIssues: DeckValidationIssue[],
 	deckFormat: DeckFormat | null,
 	rawFormat: string | undefined
 ): void {
@@ -724,6 +848,10 @@ function renderDeckAnalyticsSection(
 			text: formatDeckFormatLabel(rawFormat),
 			cls: "mtg-deck-analytics-format-badge is-unsupported",
 		});
+	}
+
+	if (deckFormat) {
+		renderDeckValidationPanel(section, validationIssues, deckFormat);
 	}
 
 	const stats = section.createEl("div", { cls: "mtg-deck-analytics-stats" });
@@ -882,6 +1010,7 @@ export async function renderDeckTable(
 	const rows = await mapDeckRows(parsed.cards, cache, deckFormat);
 	const coverage = await buildDeckCollectionCoverage(app, rows, getSettings());
 	const analytics = buildDeckAnalytics(rows);
+	const validationIssues = buildDeckValidation(rows, deckFormat);
 	if (!loadingEl.isConnected) {
 		return;
 	}
@@ -923,5 +1052,5 @@ export async function renderDeckTable(
 	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry);
 	renderTableFooter(table, rows);
 	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
-	renderDeckAnalyticsSection(containerEl, analytics, deckFormat, parsed.format);
+	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, parsed.format);
 }
