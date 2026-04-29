@@ -701,3 +701,88 @@
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
 }
+
+.workspace-leaf-content[data-type="mtg-collection-overview"] .view-content {
+	padding: 1rem;
+}
+
+.mtg-overview-view {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.mtg-overview-title {
+	margin: 0;
+	font-size: 1.15rem;
+}
+
+.mtg-overview-meta {
+	margin: -0.4rem 0 0;
+	color: var(--text-muted);
+}
+
+.mtg-overview-stats {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+	gap: 0.6rem;
+}
+
+.mtg-overview-stat {
+	padding: 0.8rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: var(--background-secondary);
+}
+
+.mtg-overview-stat-value {
+	font-size: 1.1rem;
+	font-weight: 700;
+}
+
+.mtg-overview-stat-label {
+	margin-top: 0.2rem;
+	color: var(--text-muted);
+	font-size: 0.78em;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.mtg-overview-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: 0.8rem;
+}
+
+.mtg-overview-panel {
+	padding: 0.85rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: var(--background-secondary);
+}
+
+.mtg-overview-panel-heading {
+	margin: 0 0 0.75rem;
+	font-size: 1rem;
+}
+
+.mtg-overview-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.mtg-overview-table th,
+.mtg-overview-table td {
+	padding: 0.45rem 0.4rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	text-align: left;
+	vertical-align: middle;
+}
+
+.mtg-overview-table th:last-child,
+.mtg-overview-table td:last-child,
+.mtg-overview-table th:nth-last-child(2),
+.mtg-overview-table td:nth-last-child(2) {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}

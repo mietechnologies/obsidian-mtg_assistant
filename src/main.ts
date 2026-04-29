@@ -9,6 +9,7 @@ import { renderCollectionTable } from "./render/collectionRenderer";
 import { renderDeckTable } from "./render/deckRenderer";
 import { DEFAULT_SETTINGS, MTGSettings, MTGSettingTab } from "./settings";
 import { isPathInFolder } from "./collection/collectionIndex";
+import { COLLECTION_OVERVIEW_VIEW_TYPE, CollectionOverviewView } from "./view/collectionOverviewView";
 
 export default class MtgAssistantPlugin extends Plugin {
 	settings: MTGSettings;
@@ -41,12 +42,24 @@ export default class MtgAssistantPlugin extends Plugin {
 			buildCollectionEditorExtension(this.cache, () => this.settings, this.popover)
 		);
 		this.registerEditorExtension(this.editorExtensions);
+		this.registerView(
+			COLLECTION_OVERVIEW_VIEW_TYPE,
+			(leaf) => new CollectionOverviewView(leaf, this.cache, () => this.settings)
+		);
+		this.addCommand({
+			id: "open-collection-overview",
+			name: "Open collection overview",
+			callback: () => {
+				void this.activateCollectionOverview();
+			},
+		});
 		this.registerVaultRefreshEvents();
 
 		this.addSettingTab(new MTGSettingTab(this.app, this));
 	}
 
 	onunload() {
+		this.app.workspace.detachLeavesOfType(COLLECTION_OVERVIEW_VIEW_TYPE);
 		this.popover.destroy();
 		this.cache.destroy();
 	}
@@ -71,6 +84,13 @@ export default class MtgAssistantPlugin extends Plugin {
 			const markdownView = this.getMarkdownView(leaf);
 			if (markdownView?.getMode() === "preview") {
 				markdownView.previewMode.rerender(true);
+			}
+		}
+
+		for (const leaf of this.app.workspace.getLeavesOfType(COLLECTION_OVERVIEW_VIEW_TYPE)) {
+			const view = leaf.view;
+			if (view instanceof CollectionOverviewView) {
+				void view.refresh();
 			}
 		}
 	}
@@ -168,6 +188,20 @@ export default class MtgAssistantPlugin extends Plugin {
 				}
 			})
 		);
+	}
+
+	private async activateCollectionOverview(): Promise<void> {
+		const existingLeaf = this.app.workspace.getLeavesOfType(COLLECTION_OVERVIEW_VIEW_TYPE)[0];
+		const leaf = existingLeaf ?? this.app.workspace.getRightLeaf(false);
+		if (!leaf) {
+			return;
+		}
+
+		await leaf.setViewState({
+			type: COLLECTION_OVERVIEW_VIEW_TYPE,
+			active: true,
+		});
+		this.app.workspace.revealLeaf(leaf);
 	}
 
 	private async updateCollectionBlockInFile(
