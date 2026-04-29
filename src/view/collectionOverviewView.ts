@@ -1,23 +1,34 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { CardPreviewResult, CardCache } from "../cache/cardCache";
 import { CollectionOverview, CollectionRow, loadCollectionOverview } from "../collection/collectionIndex";
-import { createColorIdentityElement } from "../render/colorIdentity";
+import { attachHoverEvents, MtgPopover } from "../render/cardImageRenderer";
+import { createManaCostElement } from "../render/manaCost";
 import { MTGSettings } from "../settings";
 
 export const COLLECTION_OVERVIEW_VIEW_TYPE = "mtg-collection-overview";
 
 interface ResolvedCollectionRow extends CollectionRow {
 	resolvedName: string;
-	colorIdentity: string[];
+	manaCosts?: string[];
+	manaValue?: number;
+	typeLine?: string;
+	displayType: string;
+	keywords: string[];
+	oracleTexts: string[];
+	typeCategories: string[];
+	searchText: string;
 	unitPrice: number | null;
 	totalPrice: number | null;
 }
 
-interface CollectionSectionRollup {
-	section: string;
-	quantity: number;
-	value: number;
-}
+type HoldingsSort =
+	| "mana-value-asc"
+	| "quantity-desc"
+	| "name-asc"
+	| "type-asc"
+	| "collection-asc"
+	| "unit-price-desc"
+	| "value-desc";
 
 function getUnitUsdPrice(result: CardPreviewResult): number | null {
 	const usd = result.card?.prices?.usd;
@@ -35,6 +46,117 @@ function createStatCard(containerEl: HTMLElement, label: string, value: string):
 	const card = containerEl.createEl("div", { cls: "mtg-overview-stat" });
 	card.createEl("div", { text: value, cls: "mtg-overview-stat-value" });
 	card.createEl("div", { text: label, cls: "mtg-overview-stat-label" });
+}
+
+function extractTypeCategories(typeLine: string | undefined): string[] {
+	const normalized = typeLine?.toLowerCase() ?? "";
+	const categories = [
+		["Creature", normalized.includes("creature")],
+		["Land", normalized.includes("land")],
+		["Instant", normalized.includes("instant")],
+		["Sorcery", normalized.includes("sorcery")],
+		["Artifact", normalized.includes("artifact")],
+		["Enchantment", normalized.includes("enchantment")],
+		["Planeswalker", normalized.includes("planeswalker")],
+		["Battle", normalized.includes("battle")],
+	].filter(([, included]) => included).map(([label]) => label as string);
+
+	return categories.length > 0 ? categories : ["Other"];
+}
+
+function normalizeDisplayType(typeLine: string | undefined): string {
+	if (!typeLine) {
+		return "—";
+	}
+
+	const normalizeFace = (faceType: string): string => {
+		const leftSide = faceType.split("—")[0]?.split("-")[0]?.trim() ?? faceType.trim();
+		const parts = leftSide.split(/\s+/);
+		const supertypes = new Set(["Basic", "Legendary"]);
+		const cardTypes = new Set([
+			"Artifact",
+			"Battle",
+			"Creature",
+			"Enchantment",
+			"Instant",
+			"Land",
+			"Planeswalker",
+			"Sorcery",
+		]);
+		const kept = parts.filter((part) => supertypes.has(part) || cardTypes.has(part));
+		return kept.length > 0 ? kept.join(" ") : leftSide;
+	};
+
+	return typeLine
+		.split(/\s*\/\/\s*/)
+		.map((face) => normalizeFace(face))
+		.join(" // ");
+}
+
+function sortHoldings(rows: ResolvedCollectionRow[], sortBy: HoldingsSort): ResolvedCollectionRow[] {
+	switch (sortBy) {
+		case "mana-value-asc":
+			return rows.slice().sort((left, right) => {
+				const leftValue =
+					left.manaValue === 0
+						? Number.POSITIVE_INFINITY - 1
+						: (left.manaValue ?? Number.POSITIVE_INFINITY);
+				const rightValue =
+					right.manaValue === 0
+						? Number.POSITIVE_INFINITY - 1
+						: (right.manaValue ?? Number.POSITIVE_INFINITY);
+				if (leftValue !== rightValue) {
+					return leftValue - rightValue;
+				}
+				return left.resolvedName.localeCompare(right.resolvedName);
+			});
+		case "name-asc":
+			return rows.slice().sort((left, right) => left.resolvedName.localeCompare(right.resolvedName));
+		case "type-asc":
+			return rows.slice().sort((left, right) => {
+				const typeDelta = left.displayType.localeCompare(right.displayType);
+				if (typeDelta !== 0) {
+					return typeDelta;
+				}
+				return left.resolvedName.localeCompare(right.resolvedName);
+			});
+		case "collection-asc":
+			return rows.slice().sort((left, right) => {
+				const leftCollection = left.sourcePaths[0] ?? "";
+				const rightCollection = right.sourcePaths[0] ?? "";
+				const collectionDelta = leftCollection.localeCompare(rightCollection);
+				if (collectionDelta !== 0) {
+					return collectionDelta;
+				}
+				return left.resolvedName.localeCompare(right.resolvedName);
+			});
+		case "unit-price-desc":
+			return rows.slice().sort((left, right) => {
+				const leftValue = left.unitPrice ?? -1;
+				const rightValue = right.unitPrice ?? -1;
+				if (rightValue !== leftValue) {
+					return rightValue - leftValue;
+				}
+				return left.resolvedName.localeCompare(right.resolvedName);
+			});
+		case "value-desc":
+			return rows.slice().sort((left, right) => {
+				const leftValue = left.totalPrice ?? -1;
+				const rightValue = right.totalPrice ?? -1;
+				if (rightValue !== leftValue) {
+					return rightValue - leftValue;
+				}
+				return left.resolvedName.localeCompare(right.resolvedName);
+			});
+		case "quantity-desc":
+		default:
+			return rows.slice().sort((left, right) => {
+				if (right.quantity !== left.quantity) {
+					return right.quantity - left.quantity;
+				}
+				return left.resolvedName.localeCompare(right.resolvedName);
+			});
+	}
 }
 
 async function resolveCollectionRows(
@@ -56,7 +178,23 @@ async function resolveCollectionRows(
 			resolvedRows[currentIndex] = {
 				...row,
 				resolvedName: resolved.cardName,
-				colorIdentity: resolved.card?.colorIdentity ?? [],
+				manaCosts:
+					resolved.card?.manaCosts ??
+					(resolved.card?.manaCost ? [resolved.card.manaCost] : undefined),
+				manaValue: resolved.card?.manaValue,
+				typeLine: resolved.card?.typeLine,
+				displayType: normalizeDisplayType(resolved.card?.typeLine),
+				keywords: resolved.card?.keywords ?? [],
+				oracleTexts: resolved.card?.oracleTexts ?? (resolved.card?.oracleText ? [resolved.card.oracleText] : []),
+				typeCategories: extractTypeCategories(resolved.card?.typeLine),
+				searchText: [
+					resolved.cardName,
+					resolved.card?.typeLine ?? "",
+					...(resolved.card?.keywords ?? []),
+					...(resolved.card?.oracleTexts ?? (resolved.card?.oracleText ? [resolved.card.oracleText] : [])),
+				]
+					.join(" ")
+					.toLowerCase(),
 				unitPrice,
 				totalPrice: unitPrice === null ? null : unitPrice * row.quantity,
 			};
@@ -69,84 +207,84 @@ async function resolveCollectionRows(
 	return resolvedRows;
 }
 
-function renderSectionRollups(containerEl: HTMLElement, rows: ResolvedCollectionRow[]): void {
-	const sectionMap = new Map<string, CollectionSectionRollup>();
-	for (const row of rows) {
-		const section = row.section ?? "Other";
-		const current = sectionMap.get(section) ?? {
-			section,
-			quantity: 0,
-			value: 0,
-		};
-		current.quantity += row.quantity;
-		if (row.totalPrice !== null) {
-			current.value += row.totalPrice;
-		}
-		sectionMap.set(section, current);
+function renderCollectionLink(view: CollectionOverviewView, containerEl: HTMLElement, row: ResolvedCollectionRow): void {
+	const primaryPath = row.sourcePaths[0];
+	if (!primaryPath) {
+		containerEl.textContent = "—";
+		return;
 	}
 
-	const panel = containerEl.createEl("section", { cls: "mtg-overview-panel" });
-	panel.createEl("h4", { text: "Sections", cls: "mtg-overview-panel-heading" });
+	const file = view.app.vault.getAbstractFileByPath(primaryPath);
+	const link = containerEl.createEl("a", {
+		text: file instanceof TFile ? file.basename : primaryPath,
+		cls: "internal-link",
+		href: "#",
+	});
+	link.addEventListener("click", (event) => {
+		event.preventDefault();
+		void view.app.workspace.openLinkText(primaryPath, "", true);
+	});
 
-	const table = panel.createEl("table", { cls: "mtg-overview-table" });
-	const thead = table.createEl("thead");
-	const headRow = thead.createEl("tr");
-	headRow.createEl("th", { text: "Section" });
-	headRow.createEl("th", { text: "Cards" });
-	headRow.createEl("th", { text: "Value" });
-
-	const tbody = table.createEl("tbody");
-	for (const rollup of Array.from(sectionMap.values()).sort((left, right) => {
-		if (right.quantity !== left.quantity) {
-			return right.quantity - left.quantity;
-		}
-		return left.section.localeCompare(right.section);
-	})) {
-		const tr = tbody.createEl("tr");
-		tr.createEl("td", { text: rollup.section });
-		tr.createEl("td", { text: String(rollup.quantity) });
-		tr.createEl("td", { text: formatUsd(rollup.value) });
+	if (row.sourcePaths.length > 1) {
+		containerEl.createEl("span", {
+			text: ` +${row.sourcePaths.length - 1}`,
+			cls: "mtg-overview-link-count",
+		});
 	}
 }
 
-function renderHoldingsTable(containerEl: HTMLElement, rows: ResolvedCollectionRow[]): void {
+function renderHoldingsTable(
+	view: CollectionOverviewView,
+	containerEl: HTMLElement,
+	rows: ResolvedCollectionRow[]
+): void {
 	const panel = containerEl.createEl("section", { cls: "mtg-overview-panel" });
-	panel.createEl("h4", { text: "Top holdings", cls: "mtg-overview-panel-heading" });
+	panel.createEl("h4", { text: "Collection cards", cls: "mtg-overview-panel-heading" });
 
 	const table = panel.createEl("table", { cls: "mtg-overview-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
 	headRow.createEl("th", { text: "Qty" });
 	headRow.createEl("th", { text: "Card" });
-	headRow.createEl("th", { text: "Color" });
+	headRow.createEl("th", { text: "Type" });
+	headRow.createEl("th", { text: "Mana cost" });
+	headRow.createEl("th", { text: "Collection" });
 	headRow.createEl("th", { text: "Unit" });
 	headRow.createEl("th", { text: "Total" });
 
 	const tbody = table.createEl("tbody");
-	for (const row of rows
-		.slice()
-		.sort((left, right) => {
-			if (right.quantity !== left.quantity) {
-				return right.quantity - left.quantity;
-			}
-			return left.resolvedName.localeCompare(right.resolvedName);
-		})
-		.slice(0, 20)) {
+	for (const row of rows.slice(0, 50)) {
 		const tr = tbody.createEl("tr");
 		tr.createEl("td", { text: String(row.quantity) });
-		tr.createEl("td", { text: row.resolvedName });
-		const colorCell = tr.createEl("td");
-		colorCell.appendChild(createColorIdentityElement(row.colorIdentity));
+		const cardCell = tr.createEl("td");
+		const cardSpan = cardCell.createEl("span", {
+			text: row.resolvedName,
+			cls: "mtg-card-ref",
+		});
+		cardSpan.tabIndex = 0;
+		cardSpan.setAttribute("role", "button");
+		cardSpan.setAttribute("aria-label", `Show Magic card preview for ${row.resolvedName}`);
+		attachHoverEvents(cardSpan, row.resolvedName, view.cache, view.getSettingsAccessor, view.popover);
+		tr.createEl("td", { text: row.displayType, cls: "mtg-overview-type-cell" });
+		const manaCell = tr.createEl("td", { cls: "mtg-overview-mana-cell" });
+		manaCell.appendChild(createManaCostElement(row.manaCosts));
+		const collectionCell = tr.createEl("td");
+		renderCollectionLink(view, collectionCell, row);
 		tr.createEl("td", { text: formatUsd(row.unitPrice) });
 		tr.createEl("td", { text: formatUsd(row.totalPrice) });
 	}
 }
 
 export class CollectionOverviewView extends ItemView {
+	private searchTerm = "";
+	private typeFilter = "all";
+	private holdingsSort: HoldingsSort = "mana-value-asc";
+
 	constructor(
 		leaf: WorkspaceLeaf,
-		private readonly cache: CardCache,
-		private readonly getSettings: () => MTGSettings
+		readonly cache: CardCache,
+		readonly getSettingsAccessor: () => MTGSettings,
+		readonly popover: MtgPopover
 	) {
 		super(leaf);
 	}
@@ -167,6 +305,98 @@ export class CollectionOverviewView extends ItemView {
 		await this.refresh();
 	}
 
+	private createControls(
+		containerEl: HTMLElement,
+		rows: ResolvedCollectionRow[],
+		rerender: () => void
+	): void {
+		const controls = containerEl.createEl("div", { cls: "mtg-overview-controls" });
+
+		const searchGroup = controls.createEl("label", { cls: "mtg-overview-control" });
+		searchGroup.createEl("span", {
+			text: "Search",
+			cls: "mtg-overview-control-label",
+		});
+		const searchInput = searchGroup.createEl("input", {
+			type: "search",
+			cls: "mtg-overview-control-input",
+		});
+		searchInput.placeholder = "Filter card names";
+		searchInput.value = this.searchTerm;
+		searchInput.addEventListener("input", () => {
+			this.searchTerm = searchInput.value.trim().toLowerCase();
+			rerender();
+		});
+
+		const sectionGroup = controls.createEl("label", { cls: "mtg-overview-control" });
+		sectionGroup.createEl("span", {
+			text: "Type",
+			cls: "mtg-overview-control-label",
+		});
+		const sectionSelect = sectionGroup.createEl("select", {
+			cls: "mtg-overview-control-select",
+		});
+		const sections = [
+			"all",
+			...Array.from(new Set(rows.flatMap((row) => row.typeCategories))).sort(),
+		];
+		for (const section of sections) {
+			const option = sectionSelect.createEl("option");
+			option.value = section;
+			option.textContent = section === "all" ? "All types" : section;
+			option.selected = section === this.typeFilter;
+		}
+		sectionSelect.addEventListener("change", () => {
+			this.typeFilter = sectionSelect.value;
+			rerender();
+		});
+
+		const sortGroup = controls.createEl("label", { cls: "mtg-overview-control" });
+		sortGroup.createEl("span", {
+			text: "Sort",
+			cls: "mtg-overview-control-label",
+		});
+		const sortSelect = sortGroup.createEl("select", {
+			cls: "mtg-overview-control-select",
+		});
+		const sortOptions: Array<{ value: HoldingsSort; label: string }> = [
+			{ value: "mana-value-asc", label: "Mana value" },
+			{ value: "quantity-desc", label: "Quantity" },
+			{ value: "type-asc", label: "Type" },
+			{ value: "collection-asc", label: "Collection" },
+			{ value: "unit-price-desc", label: "Price per card" },
+			{ value: "value-desc", label: "Total value" },
+			{ value: "name-asc", label: "Name" },
+		];
+		for (const { value, label } of sortOptions) {
+			const option = sortSelect.createEl("option");
+			option.value = value;
+			option.textContent = label;
+			option.selected = value === this.holdingsSort;
+		}
+		sortSelect.addEventListener("change", () => {
+			this.holdingsSort = sortSelect.value as HoldingsSort;
+			rerender();
+		});
+	}
+
+	private getFilteredRows(rows: ResolvedCollectionRow[]): ResolvedCollectionRow[] {
+		return rows.filter((row) => {
+			if (
+				this.typeFilter !== "all" &&
+				!row.typeCategories.includes(this.typeFilter)
+			) {
+				return false;
+			}
+
+			if (!this.searchTerm) {
+				return true;
+			}
+
+			return row.searchText.includes(this.searchTerm);
+		});
+	}
+
 	async refresh(): Promise<void> {
 		const { contentEl } = this;
 		contentEl.empty();
@@ -182,7 +412,7 @@ export class CollectionOverviewView extends ItemView {
 			cls: "mtg-card-popover-message",
 		});
 
-		const overview = await loadCollectionOverview(this.app, this.getSettings());
+		const overview = await loadCollectionOverview(this.app, this.getSettingsAccessor());
 		const resolvedRows = await resolveCollectionRows(overview.rows, this.cache);
 		if (!loadingEl.isConnected) {
 			return;
@@ -207,7 +437,7 @@ export class CollectionOverviewView extends ItemView {
 			cls: "mtg-overview-meta",
 			text: `Using ${overview.sourceBlockCount} collection block${overview.sourceBlockCount === 1 ? "" : "s"} across ${overview.sourceFileCount} note${overview.sourceFileCount === 1 ? "" : "s"}.`,
 		});
-		sourceMeta.setAttribute("data-folder", this.getSettings().collectionFolder);
+		sourceMeta.setAttribute("data-folder", this.getSettingsAccessor().collectionFolder);
 
 		const stats = contentEl.createEl("div", { cls: "mtg-overview-stats" });
 		createStatCard(stats, "Total cards", String(overview.totalQuantity));
@@ -215,8 +445,17 @@ export class CollectionOverviewView extends ItemView {
 		const totalValue = resolvedRows.reduce((sum, row) => sum + (row.totalPrice ?? 0), 0);
 		createStatCard(stats, "Estimated value", formatUsd(totalValue));
 
-		const grid = contentEl.createEl("div", { cls: "mtg-overview-grid" });
-		renderHoldingsTable(grid, resolvedRows);
-		renderSectionRollups(grid, resolvedRows);
+		const body = contentEl.createEl("div", { cls: "mtg-overview-body" });
+		let grid!: HTMLElement;
+		const rerenderTables = (): void => {
+			grid.empty();
+			const filteredRows = this.getFilteredRows(resolvedRows);
+			const sortedRows = sortHoldings(filteredRows, this.holdingsSort);
+			renderHoldingsTable(this, grid, sortedRows);
+		};
+
+		this.createControls(body, resolvedRows, rerenderTables);
+		grid = body.createEl("div", { cls: "mtg-overview-grid" });
+		rerenderTables();
 	}
 }

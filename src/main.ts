@@ -44,7 +44,7 @@ export default class MtgAssistantPlugin extends Plugin {
 		this.registerEditorExtension(this.editorExtensions);
 		this.registerView(
 			COLLECTION_OVERVIEW_VIEW_TYPE,
-			(leaf) => new CollectionOverviewView(leaf, this.cache, () => this.settings)
+			(leaf) => new CollectionOverviewView(leaf, this.cache, () => this.settings, this.popover)
 		);
 		this.addCommand({
 			id: "open-collection-overview",

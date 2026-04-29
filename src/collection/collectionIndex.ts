@@ -7,6 +7,7 @@ export interface CollectionRow {
 	cardName: string;
 	quantity: number;
 	section?: string;
+	sourcePaths: string[];
 }
 
 export interface CollectionTotals {
@@ -57,6 +58,7 @@ function buildCollectionBlockRegex(language: string): RegExp {
 function addCollectionSource(
 	quantities: Map<string, number>,
 	rowsByKey: Map<string, CollectionRow>,
+	sourcePath: string,
 	source: string
 ): void {
 	const parsed = parseCollectionList(source);
@@ -73,6 +75,9 @@ function addCollectionSource(
 			if (!existingRow.section && card.section) {
 				existingRow.section = titleCaseSection(card.section);
 			}
+			if (!existingRow.sourcePaths.includes(sourcePath)) {
+				existingRow.sourcePaths.push(sourcePath);
+			}
 			continue;
 		}
 
@@ -81,6 +86,7 @@ function addCollectionSource(
 			cardName: card.cardName,
 			quantity: card.quantity,
 			section: card.section ? titleCaseSection(card.section) : undefined,
+			sourcePaths: [sourcePath],
 		});
 	}
 }
@@ -98,7 +104,7 @@ async function readCollectionFile(
 	let match: RegExpExecArray | null;
 
 	while ((match = regex.exec(content)) !== null) {
-		addCollectionSource(quantities, rowsByKey, match[2] ?? "");
+		addCollectionSource(quantities, rowsByKey, file.path, match[2] ?? "");
 		blockCount += 1;
 	}
 

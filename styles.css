@@ -728,6 +728,41 @@
 	gap: 0.6rem;
 }
 
+.mtg-overview-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.8rem;
+}
+
+.mtg-overview-controls {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 0.6rem;
+}
+
+.mtg-overview-control {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}
+
+.mtg-overview-control-label {
+	color: var(--text-muted);
+	font-size: 0.75em;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.mtg-overview-control-input,
+.mtg-overview-control-select {
+	width: 100%;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
 .mtg-overview-stat {
 	padding: 0.8rem;
 	border: 1px solid var(--background-modifier-border);
@@ -785,4 +820,60 @@
 .mtg-overview-table td:nth-last-child(2) {
 	text-align: right;
 	font-variant-numeric: tabular-nums;
+}
+
+.mtg-overview-table th:nth-child(4),
+.mtg-overview-table td:nth-child(4) {
+	text-align: left;
+}
+
+.mtg-overview-link-count {
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+.mtg-overview-mana-cell {
+	min-width: 7rem;
+}
+
+.mtg-overview-type-cell {
+	min-width: 10rem;
+	color: var(--text-muted);
+}
+
+.mtg-mana-cost {
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+}
+
+.mtg-mana-cost-row {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.18rem;
+}
+
+.mtg-mana-cost-separator {
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+.mtg-mana-symbol {
+	width: 1rem;
+	height: 1rem;
+	display: block;
+}
+
+.mtg-mana-symbol.is-fallback {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1rem;
+	height: 1rem;
+	padding: 0 0.2rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	font-size: 0.72em;
+	font-weight: 700;
 }

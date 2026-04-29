@@ -15,7 +15,10 @@ export type CardLookupStatus =
 
 export interface CardMetadataFields {
 	manaCost?: string;
+	manaCosts?: string[];
 	manaValue?: number;
+	oracleText?: string;
+	oracleTexts?: string[];
 	typeLine?: string;
 	power?: string;
 	toughness?: string;
@@ -47,6 +50,7 @@ interface ScryfallCard {
 	name: string;
 	mana_cost?: string;
 	cmc?: number;
+	oracle_text?: string;
 	type_line?: string;
 	power?: string;
 	toughness?: string;
@@ -64,7 +68,7 @@ interface ScryfallCard {
 		tix?: string | null;
 	};
 	image_uris?: { normal: string };
-	card_faces?: Array<{ image_uris?: { normal: string } }>;
+	card_faces?: Array<{ mana_cost?: string; oracle_text?: string; image_uris?: { normal: string } }>;
 	details?: string;
 }
 
@@ -133,9 +137,29 @@ async function scheduleScryfallRequest<T>(task: () => Promise<T>): Promise<T> {
 }
 
 function extractMetadata(data: ScryfallCard): CardMetadataFields {
+	const manaCosts = data.card_faces
+		?.map((face) => face.mana_cost?.trim() ?? "")
+		.filter((cost) => cost.length > 0);
+	const oracleTexts = data.card_faces
+		?.map((face) => face.oracle_text?.trim() ?? "")
+		.filter((text) => text.length > 0);
+
 	return {
 		manaCost: data.mana_cost,
+		manaCosts:
+			manaCosts && manaCosts.length > 0
+				? manaCosts
+				: data.mana_cost
+					? [data.mana_cost]
+					: undefined,
 		manaValue: data.cmc,
+		oracleText: data.oracle_text,
+		oracleTexts:
+			oracleTexts && oracleTexts.length > 0
+				? oracleTexts
+				: data.oracle_text
+					? [data.oracle_text]
+					: undefined,
 		typeLine: data.type_line,
 		power: data.power,
 		toughness: data.toughness,
