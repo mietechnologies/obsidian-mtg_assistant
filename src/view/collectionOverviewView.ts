@@ -1,8 +1,14 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { CardPreviewResult, CardCache } from "../cache/cardCache";
-import { CollectionOverview, CollectionRow, loadCollectionOverview } from "../collection/collectionIndex";
+import {
+	CollectionRow,
+	CollectionSourceRef,
+	loadCollectionOverview,
+} from "../collection/collectionIndex";
+import { sectionSortKey, titleCaseSection } from "../render/cardSections";
 import { attachHoverEvents, MtgPopover } from "../render/cardImageRenderer";
 import { createManaCostElement } from "../render/manaCost";
+import { parseCollectionList } from "../parser/deckParser";
 import { MTGSettings } from "../settings";
 
 export const COLLECTION_OVERVIEW_VIEW_TYPE = "mtg-collection-overview";
@@ -42,10 +48,156 @@ function formatUsd(value: number | null): string {
 	return value === null ? "N/A" : `$${value.toFixed(2)}`;
 }
 
+interface EditableCollectionRow {
+	key: string;
+	cardName: string;
+	quantity: number;
+	section?: string;
+}
+
 function createStatCard(containerEl: HTMLElement, label: string, value: string): void {
 	const card = containerEl.createEl("div", { cls: "mtg-overview-stat" });
 	card.createEl("div", { text: value, cls: "mtg-overview-stat-value" });
 	card.createEl("div", { text: label, cls: "mtg-overview-stat-label" });
+}
+
+function buildCollectionBlockText(language: string, source: string): string {
+	return `\`\`\`${language}\n${source}\n\`\`\``;
+}
+
+function buildEditableRows(source: string): EditableCollectionRow[] {
+	return parseCollectionList(source).cards.map((card) => ({
+		key: card.cardName.trim().toLowerCase(),
+		cardName: card.cardName,
+		quantity: card.quantity,
+		section: card.section ? titleCaseSection(card.section) : undefined,
+	}));
+}
+
+function sortEditableRows(rows: EditableCollectionRow[]): EditableCollectionRow[] {
+	return [...rows].sort((left, right) => {
+		const leftSection = left.section ?? "Other";
+		const rightSection = right.section ?? "Other";
+		const sectionDelta = sectionSortKey(leftSection) - sectionSortKey(rightSection);
+		if (sectionDelta !== 0) {
+			return sectionDelta;
+		}
+
+		const sectionNameDelta = leftSection.localeCompare(rightSection);
+		if (sectionNameDelta !== 0) {
+			return sectionNameDelta;
+		}
+
+		return left.cardName.localeCompare(right.cardName);
+	});
+}
+
+function buildCollectionSource(rows: EditableCollectionRow[]): string {
+	const groupedRows = new Map<string, EditableCollectionRow[]>();
+
+	for (const row of sortEditableRows(rows)) {
+		const section = row.section ?? "Other";
+		const sectionRows = groupedRows.get(section);
+		if (sectionRows) {
+			sectionRows.push(row);
+			continue;
+		}
+		groupedRows.set(section, [row]);
+	}
+
+	return Array.from(groupedRows.entries())
+		.map(([section, sectionRows]) => {
+			const lines = [`- ${section}:`];
+			for (const row of sectionRows) {
+				lines.push(`${row.quantity} ${row.cardName}`);
+			}
+			return lines.join("\n");
+		})
+		.join("\n\n");
+}
+
+function adjustCollectionRows(
+	rows: EditableCollectionRow[],
+	targetKey: string,
+	delta: number,
+	removeAtZero: boolean
+): EditableCollectionRow[] {
+	const nextRows: EditableCollectionRow[] = [];
+
+	for (const row of rows) {
+		if (row.key !== targetKey) {
+			nextRows.push({ ...row });
+			continue;
+		}
+
+		const nextQuantity = Math.max(0, row.quantity + delta);
+		if (nextQuantity === 0 && removeAtZero) {
+			continue;
+		}
+
+		nextRows.push({
+			...row,
+			quantity: nextQuantity,
+		});
+	}
+
+	return nextRows;
+}
+
+function chooseSourceRef(row: ResolvedCollectionRow, delta: number): CollectionSourceRef | null {
+	if (row.sourceRefs.length === 0) {
+		return null;
+	}
+
+	if (delta > 0) {
+		return row.sourceRefs[0] ?? null;
+	}
+
+	return (
+		row.sourceRefs
+			.slice()
+			.sort((left, right) => right.quantity - left.quantity)[0] ?? null
+	);
+}
+
+function createQuantityCell(
+	view: CollectionOverviewView,
+	row: ResolvedCollectionRow
+): HTMLTableCellElement {
+	const cell = document.createElement("td");
+	cell.className = "mtg-collection-qty mtg-overview-qty-cell";
+
+	const wrapper = cell.createEl("div", { cls: "mtg-collection-qty-controls" });
+	const decrement = wrapper.createEl("button", {
+		text: "−",
+		cls: "mtg-collection-stepper",
+	});
+	decrement.type = "button";
+	decrement.setAttribute("aria-label", `Decrease ${row.resolvedName} quantity`);
+	decrement.addEventListener("click", (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		void view.adjustQuantity(row, -1);
+	});
+
+	wrapper.createEl("span", {
+		text: String(row.quantity),
+		cls: "mtg-collection-qty-value",
+	});
+
+	const increment = wrapper.createEl("button", {
+		text: "+",
+		cls: "mtg-collection-stepper",
+	});
+	increment.type = "button";
+	increment.setAttribute("aria-label", `Increase ${row.resolvedName} quantity`);
+	increment.addEventListener("click", (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		void view.adjustQuantity(row, 1);
+	});
+
+	return cell;
 }
 
 function extractTypeCategories(typeLine: string | undefined): string[] {
@@ -254,8 +406,8 @@ function renderHoldingsTable(
 
 	const tbody = table.createEl("tbody");
 	for (const row of rows.slice(0, 50)) {
-		const tr = tbody.createEl("tr");
-		tr.createEl("td", { text: String(row.quantity) });
+		const tr = tbody.createEl("tr", { cls: "mtg-collection-row" });
+		tr.appendChild(createQuantityCell(view, row));
 		const cardCell = tr.createEl("td");
 		const cardSpan = cardCell.createEl("span", {
 			text: row.resolvedName,
@@ -294,7 +446,7 @@ export class CollectionOverviewView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Collection Overview";
+		return "Collection overview";
 	}
 
 	getIcon(): string {
@@ -302,6 +454,40 @@ export class CollectionOverviewView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
+		await this.refresh();
+	}
+
+	async adjustQuantity(row: ResolvedCollectionRow, delta: number): Promise<void> {
+		const sourceRef = chooseSourceRef(row, delta);
+		if (!sourceRef) {
+			return;
+		}
+
+		const file = this.app.vault.getAbstractFileByPath(sourceRef.sourcePath);
+		if (!(file instanceof TFile)) {
+			return;
+		}
+
+		const currentContent = await this.app.vault.cachedRead(file);
+		const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
+		const currentLines = currentContent.split(/\r?\n/);
+		const sectionLineCount = sourceRef.sectionText.split(/\r?\n/).length + 2;
+		const currentRows = buildEditableRows(sourceRef.sectionText);
+		const nextRows = adjustCollectionRows(
+			currentRows,
+			row.key,
+			delta,
+			this.getSettingsAccessor().removeCollectionLineAtZero
+		);
+		const nextSource = buildCollectionSource(nextRows);
+		const nextBlock = buildCollectionBlockText(
+			this.getSettingsAccessor().collectionCodeBlockLanguage,
+			nextSource
+		);
+		const nextLines = nextBlock.split("\n");
+
+		currentLines.splice(sourceRef.lineStart, sectionLineCount, ...nextLines);
+		await this.app.vault.modify(file, currentLines.join(eol));
 		await this.refresh();
 	}
 

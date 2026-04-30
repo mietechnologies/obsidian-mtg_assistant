@@ -8,6 +8,14 @@ export interface CollectionRow {
 	quantity: number;
 	section?: string;
 	sourcePaths: string[];
+	sourceRefs: CollectionSourceRef[];
+}
+
+export interface CollectionSourceRef {
+	sourcePath: string;
+	lineStart: number;
+	sectionText: string;
+	quantity: number;
 }
 
 export interface CollectionTotals {
@@ -55,11 +63,16 @@ function buildCollectionBlockRegex(language: string): RegExp {
 	return new RegExp("(^|\\n)```" + escaped + "\\n([\\s\\S]*?)\\n```(?=\\n|$)", "g");
 }
 
+function getLineStart(text: string, index: number): number {
+	return text.slice(0, index).split(/\r?\n/).length - 1;
+}
+
 function addCollectionSource(
 	quantities: Map<string, number>,
 	rowsByKey: Map<string, CollectionRow>,
 	sourcePath: string,
-	source: string
+	source: string,
+	lineStart: number
 ): void {
 	const parsed = parseCollectionList(source);
 	for (const card of parsed.cards) {
@@ -78,6 +91,12 @@ function addCollectionSource(
 			if (!existingRow.sourcePaths.includes(sourcePath)) {
 				existingRow.sourcePaths.push(sourcePath);
 			}
+			existingRow.sourceRefs.push({
+				sourcePath,
+				lineStart,
+				sectionText: source,
+				quantity: card.quantity,
+			});
 			continue;
 		}
 
@@ -87,6 +106,14 @@ function addCollectionSource(
 			quantity: card.quantity,
 			section: card.section ? titleCaseSection(card.section) : undefined,
 			sourcePaths: [sourcePath],
+			sourceRefs: [
+				{
+					sourcePath,
+					lineStart,
+					sectionText: source,
+					quantity: card.quantity,
+				},
+			],
 		});
 	}
 }
@@ -104,7 +131,9 @@ async function readCollectionFile(
 	let match: RegExpExecArray | null;
 
 	while ((match = regex.exec(content)) !== null) {
-		addCollectionSource(quantities, rowsByKey, file.path, match[2] ?? "");
+		const blockStart = match.index + (match[1]?.length ?? 0);
+		const lineStart = getLineStart(content, blockStart);
+		addCollectionSource(quantities, rowsByKey, file.path, match[2] ?? "", lineStart);
 		blockCount += 1;
 	}
 

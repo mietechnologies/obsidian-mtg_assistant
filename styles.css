@@ -827,6 +827,10 @@
 	text-align: left;
 }
 
+.mtg-overview-qty-cell {
+	width: 6.5rem;
+}
+
 .mtg-overview-link-count {
 	color: var(--text-muted);
 	font-size: 0.85em;
