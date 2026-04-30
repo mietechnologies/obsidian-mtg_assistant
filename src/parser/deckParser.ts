@@ -70,6 +70,16 @@ function parseCardLine(line: string, minimumQuantity: number): ParsedDeckCard | 
 		return { quantity, cardName };
 	}
 
+	if (minimumQuantity > 0) {
+		const cardName = normalizeParsedCardName(normalizedLine);
+		if (cardName) {
+			return {
+				quantity: 1,
+				cardName,
+			};
+		}
+	}
+
 	return null;
 }
 
