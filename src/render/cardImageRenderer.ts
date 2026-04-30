@@ -358,8 +358,6 @@ export function buildReadingViewProcessor(
 ): (el: HTMLElement) => void {
 	return (el: HTMLElement): void => {
 		const settings = getSettings();
-		if (!settings.enableReadingView) return;
-
 		const regex = buildCardReferenceRegex(settings.cardPrefix);
 		replaceTextNodes(el, regex, cache, getSettings, popover);
 	};

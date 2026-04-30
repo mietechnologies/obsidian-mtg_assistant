@@ -86,9 +86,6 @@ function buildDecorations(
 ): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
 	const settings = getSettings();
-	if (!settings.enableLivePreview) {
-		return Decoration.none;
-	}
 
 	const text = state.doc.toString();
 	const regex = buildCollectionBlockRegex(settings.collectionCodeBlockLanguage);

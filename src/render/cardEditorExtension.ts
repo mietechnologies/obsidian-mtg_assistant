@@ -49,7 +49,6 @@ function buildDecorations(
 	popover: MtgPopover
 ): DecorationSet {
 	const settings = getSettings();
-	if (!settings.enableLivePreview) return Decoration.none;
 
 	const builder = new RangeSetBuilder<Decoration>();
 	const selection = view.state.selection;

@@ -4,8 +4,6 @@ import MtgAssistantPlugin from "./main";
 export interface MTGSettings {
 	cardPrefix: string;
 	maxImageWidth: number;
-	enableReadingView: boolean;
-	enableLivePreview: boolean;
 	deckCodeBlockLanguage: string;
 	collectionCodeBlockLanguage: string;
 	collectionFolder: string;
@@ -20,8 +18,6 @@ export interface MTGSettings {
 export const DEFAULT_SETTINGS: MTGSettings = {
 	cardPrefix: "mtg",
 	maxImageWidth: 256,
-	enableReadingView: true,
-	enableLivePreview: true,
 	deckCodeBlockLanguage: "mtg-deck",
 	collectionCodeBlockLanguage: "mtg-collection",
 	collectionFolder: "collection/",
@@ -51,7 +47,7 @@ export class MTGSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Card prefix")
-			.setDesc("Prefix used in references such as [mtg:card name].")
+			.setDesc("Prefix used in inline references like [mtg:card name].")
 			.addText((text) =>
 				text
 					.setPlaceholder("Example: mtg")
@@ -63,73 +59,8 @@ export class MTGSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Deck code block language")
-			.setDesc("Code fence language used for rendered deck lists.")
-			.addText((text) =>
-				text
-					.setPlaceholder("Example: mtg-deck")
-					.setValue(this.plugin.settings.deckCodeBlockLanguage)
-					.onChange(async (value) => {
-						this.plugin.settings.deckCodeBlockLanguage = value.trim() || "mtg-deck";
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Collection code block language")
-			.setDesc("Code fence language used for rendered collection lists.")
-			.addText((text) =>
-				text
-					.setPlaceholder("Example: mtg-collection")
-					.setValue(this.plugin.settings.collectionCodeBlockLanguage)
-					.onChange(async (value) => {
-						this.plugin.settings.collectionCodeBlockLanguage =
-							value.trim() || "mtg-collection";
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Collection folder")
-			.setDesc("Vault-relative folder for collection notes. Subfolders are included for future collection features.")
-			.addText((text) =>
-				text
-					.setPlaceholder("Example: collection/")
-					.setValue(this.plugin.settings.collectionFolder)
-					.onChange(async (value) => {
-						this.plugin.settings.collectionFolder = value.trim() || "collection/";
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Commander marker")
-			.setDesc("Section label line used to mark a commander block inside a deck list.")
-			.addText((text) =>
-				text
-					.setPlaceholder("Example: - commander:")
-					.setValue(this.plugin.settings.commanderMarker)
-					.onChange(async (value) => {
-						this.plugin.settings.commanderMarker = value.trim() || "- Commander:";
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Remove collection rows at zero quantity")
-			.setDesc("When disabled, decreasing a collection card to zero keeps the row as 0 instead of deleting it.")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.removeCollectionLineAtZero)
-					.onChange(async (value) => {
-						this.plugin.settings.removeCollectionLineAtZero = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Maximum image width")
-			.setDesc("Maximum width for card images in the hover popover.")
+			.setName("Image width")
+			.setDesc("Maximum width for card images in hover previews.")
 			.addSlider((slider) =>
 				slider
 					.setLimits(0, this.imageWidthOptions.length - 1, 1)
@@ -142,58 +73,8 @@ export class MTGSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Enable in reading view")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableReadingView)
-					.onChange(async (value) => {
-						this.plugin.settings.enableReadingView = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Enable in live preview")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableLivePreview)
-					.onChange(async (value) => {
-						this.plugin.settings.enableLivePreview = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Static cache duration in days")
-			.setDesc("How long card metadata and image references stay cached before a full refresh.")
-			.addText((text) =>
-				text
-					.setPlaceholder("30")
-					.setValue(String(this.plugin.settings.staticCacheTTLDays))
-					.onChange(async (value) => {
-						const parsed = this.parsePositiveInt(value, this.plugin.settings.staticCacheTTLDays);
-						this.plugin.settings.staticCacheTTLDays = parsed;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Price refresh interval in hours")
-			.setDesc("How often cached prices should be refreshed from the card API.")
-			.addText((text) =>
-				text
-					.setPlaceholder("24")
-					.setValue(String(this.plugin.settings.priceCacheHours))
-					.onChange(async (value) => {
-						const parsed = this.parsePositiveInt(value, this.plugin.settings.priceCacheHours);
-						this.plugin.settings.priceCacheHours = parsed;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
 			.setName("Foil price suffix")
-			.setDesc("Short label appended to foil prices in the preview.")
+			.setDesc("Short label shown after foil prices in hover previews.")
 			.addText((text) =>
 				text
 					.setPlaceholder("F")
@@ -206,7 +87,7 @@ export class MTGSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Etched price suffix")
-			.setDesc("Short label appended to etched prices in the preview.")
+			.setDesc("Short label shown after etched prices in hover previews.")
 			.addText((text) =>
 				text
 					.setPlaceholder("E")
@@ -217,11 +98,116 @@ export class MTGSettingTab extends PluginSettingTab {
 					})
 			);
 
+		const deckListsSetting = new Setting(containerEl)
+			.setName("Deck lists")
+			.setHeading()
+			.setDesc(this.getDeckListsDescription());
+
+		new Setting(containerEl)
+			.setName("Deck list code block tag")
+			.setDesc("Code fence tag used for rendered deck lists.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: mtg-deck")
+					.setValue(this.plugin.settings.deckCodeBlockLanguage)
+					.onChange(async (value) => {
+						this.plugin.settings.deckCodeBlockLanguage = value.trim() || "mtg-deck";
+						deckListsSetting.setDesc(this.getDeckListsDescription());
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Commander marker")
+			.setDesc("Section label used to mark the commander block in a deck list.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: - commander:")
+					.setValue(this.plugin.settings.commanderMarker)
+					.onChange(async (value) => {
+						this.plugin.settings.commanderMarker = value.trim() || "- Commander:";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		const collectionListsSetting = new Setting(containerEl)
+			.setName("Collection lists")
+			.setHeading()
+			.setDesc(this.getCollectionListsDescription());
+
+		new Setting(containerEl)
+			.setName("Collection list code block tag")
+			.setDesc("Code fence tag used for rendered collection lists.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: mtg-collection")
+					.setValue(this.plugin.settings.collectionCodeBlockLanguage)
+					.onChange(async (value) => {
+						this.plugin.settings.collectionCodeBlockLanguage =
+							value.trim() || "mtg-collection";
+						collectionListsSetting.setDesc(this.getCollectionListsDescription());
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Collections folder")
+			.setDesc("Vault-relative folder that contains collection notes. Subfolders are included.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Example: collection/")
+					.setValue(this.plugin.settings.collectionFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.collectionFolder = value.trim() || "collection/";
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Remove collection rows at zero quantity")
+			.setDesc("When enabled, collection rows are removed automatically when their quantity reaches zero.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.removeCollectionLineAtZero)
+					.onChange(async (value) => {
+						this.plugin.settings.removeCollectionLineAtZero = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		new Setting(containerEl).setName("Cache management").setHeading();
 
 		new Setting(containerEl)
+			.setName("Image cache duration in days")
+			.setDesc("How long cached card images are kept before they are refreshed.")
+			.addText((text) =>
+				text
+					.setPlaceholder("30")
+					.setValue(String(this.plugin.settings.staticCacheTTLDays))
+					.onChange(async (value) => {
+						const parsed = this.parsePositiveInt(value, this.plugin.settings.staticCacheTTLDays);
+						this.plugin.settings.staticCacheTTLDays = parsed;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Metadata cache duration in hours")
+			.setDesc("How long cached card data and prices are kept before they are refreshed.")
+			.addText((text) =>
+				text
+					.setPlaceholder("24")
+					.setValue(String(this.plugin.settings.priceCacheHours))
+					.onChange(async (value) => {
+						const parsed = this.parsePositiveInt(value, this.plugin.settings.priceCacheHours);
+						this.plugin.settings.priceCacheHours = parsed;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
 			.setName("Clear metadata cache")
-			.setDesc("Remove cached lookup results so cards are resolved again on next hover.")
+			.setDesc("Remove cached card data so cards are looked up again the next time they are needed.")
 				.addButton((button) =>
 					button.setButtonText("Clear metadata").onClick(async () => {
 						await this.plugin.cache.clearMetadataCache();
@@ -231,7 +217,7 @@ export class MTGSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Clear image cache")
-			.setDesc("Delete all locally cached card images.")
+			.setDesc("Delete all cached card images stored by the plugin.")
 				.addButton((button) =>
 					button
 						.setButtonText("Clear images")
@@ -246,6 +232,14 @@ export class MTGSettingTab extends PluginSettingTab {
 	private getImageWidthIndex(width: number): number {
 		const index = this.imageWidthOptions.indexOf(width);
 		return index >= 0 ? index : 1;
+	}
+
+	private getDeckListsDescription(): string {
+		return `Create a deck list with a code block using the tag below as the syntax hint and add one card per line.`;
+	}
+
+	private getCollectionListsDescription(): string {
+		return `Create a collection list with a code block using the tag below as the syntax hint and add one card per line.`;
 	}
 
 	private parsePositiveInt(value: string, fallback: number): number {
