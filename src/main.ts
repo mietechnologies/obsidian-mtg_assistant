@@ -59,7 +59,6 @@ export default class MtgAssistantPlugin extends Plugin {
 	}
 
 	onunload() {
-		this.app.workspace.detachLeavesOfType(COLLECTION_OVERVIEW_VIEW_TYPE);
 		this.popover.destroy();
 		this.cache.destroy();
 	}
