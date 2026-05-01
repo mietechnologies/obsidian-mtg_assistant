@@ -43,8 +43,6 @@ export class MTGSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		new Setting(containerEl).setName("Display").setHeading();
-
 		new Setting(containerEl)
 			.setName("Card prefix")
 			.setDesc("Prefix used in inline references like [mtg:card name].")
@@ -59,7 +57,7 @@ export class MTGSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Image width")
+			.setName("Card image width")
 			.setDesc("Maximum width for card images in hover previews.")
 			.addSlider((slider) =>
 				slider
