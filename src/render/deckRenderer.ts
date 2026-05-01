@@ -701,6 +701,15 @@ function createCollapsibleSection(
 	return details.createEl("div", { cls: "mtg-collapsible-content" });
 }
 
+function quantizeScale(value: number, max: number, levels = 12, minimumVisible = 1): number {
+	if (value <= 0 || max <= 0) {
+		return 0;
+	}
+
+	const scaled = Math.round((value / max) * levels);
+	return Math.max(minimumVisible, Math.min(levels, scaled));
+}
+
 function renderManaCurveChart(containerEl: HTMLElement, buckets: AnalyticsBucket[]): void {
 	const section = containerEl.createEl("section", { cls: "mtg-deck-analytics-panel" });
 	section.createEl("h5", {
@@ -717,8 +726,10 @@ function renderManaCurveChart(containerEl: HTMLElement, buckets: AnalyticsBucket
 			text: String(bucket.count),
 			cls: "mtg-deck-curve-value",
 		});
-		const bar = column.createEl("div", { cls: "mtg-deck-curve-bar" });
-		bar.style.height = `${Math.max((bucket.count / maxCount) * 100, bucket.count > 0 ? 8 : 0)}%`;
+		const level = quantizeScale(bucket.count, maxCount);
+		column.createEl("div", {
+			cls: `mtg-deck-curve-bar is-level-${level}`,
+		});
 		column.createEl("span", {
 			text: bucket.label,
 			cls: "mtg-deck-curve-label",
@@ -735,11 +746,10 @@ function renderTypeDistribution(containerEl: HTMLElement, buckets: AnalyticsBuck
 
 	const bar = section.createEl("div", { cls: "mtg-deck-type-bar" });
 	for (const bucket of buckets) {
-		const segment = bar.createEl("span", {
-			cls: `mtg-deck-type-segment is-${normalizeCardKey(bucket.label).replace(/[^a-z0-9]+/g, "-")}`,
+		const spanLevel = quantizeScale(bucket.count, Math.max(totalCards, 1));
+		bar.createEl("span", {
+			cls: `mtg-deck-type-segment is-${normalizeCardKey(bucket.label).replace(/[^a-z0-9]+/g, "-")} is-span-${spanLevel}`,
 		});
-		segment.style.width = `${(bucket.count / Math.max(totalCards, 1)) * 100}%`;
-		segment.title = `${bucket.label}: ${bucket.count}`;
 	}
 
 	const legend = section.createEl("div", { cls: "mtg-deck-type-legend" });

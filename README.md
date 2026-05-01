@@ -14,6 +14,14 @@ MTG Assistant is an Obsidian plugin for working with Magic: The Gathering cards 
 - Local caching for card metadata and card images.
 - Retry controls for rate-limited lookups.
 
+## Disclosures
+
+- Network use: the plugin sends card lookup and image requests to Scryfall to resolve card metadata, legality, prices, and preview images.
+- External links: the plugin can generate TCGPlayer links for missing-card shopping, but it does not send your collection data to TCGPlayer unless you choose to open that link.
+- Local file access: the plugin reads markdown notes in your configured collection folder and stores local cache files for card metadata and images in your Obsidian config directory under the plugin folder.
+- Note modifications: when you use quantity steppers in rendered collection views or the collection overview, the plugin edits the underlying collection code block in the corresponding note.
+- Telemetry and ads: the plugin does not include telemetry, analytics, or advertising.
+
 ## Inline Card References
 
 Use inline references like this anywhere in a note:
@@ -135,7 +143,7 @@ When a card appears in multiple collection notes, the overview still aggregates 
 The settings tab includes:
 
 - `Card prefix`
-- `Image width`
+- `Card image width`
 - `Foil price suffix`
 - `Etched price suffix`
 - `Deck list code block tag`

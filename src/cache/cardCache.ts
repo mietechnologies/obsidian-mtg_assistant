@@ -47,7 +47,8 @@ export class CardCache {
 		pluginId: string,
 		private readonly getSettings: () => MTGSettings
 	) {
-		this.cacheDir = `.obsidian/plugins/${pluginId}/cache`;
+		const pluginDir = `${this.app.vault.configDir}/plugins/${pluginId}`;
+		this.cacheDir = `${pluginDir}/cache`;
 		this.imagesDir = `${this.cacheDir}/images`;
 		this.metadataPath = `${this.cacheDir}/metadata.json`;
 	}

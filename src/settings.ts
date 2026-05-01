@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, normalizePath } from "obsidian";
 import MtgAssistantPlugin from "./main";
 
 export interface MTGSettings {
@@ -15,12 +15,21 @@ export interface MTGSettings {
 	etchedPriceSuffix: string;
 }
 
+export function normalizeCollectionFolderPath(folder: string): string {
+	const trimmed = folder.trim();
+	if (!trimmed) {
+		return "collection";
+	}
+
+	return normalizePath(trimmed).replace(/^\/+|\/+$/g, "");
+}
+
 export const DEFAULT_SETTINGS: MTGSettings = {
 	cardPrefix: "mtg",
 	maxImageWidth: 256,
 	deckCodeBlockLanguage: "mtg-deck",
 	collectionCodeBlockLanguage: "mtg-collection",
-	collectionFolder: "collection/",
+	collectionFolder: normalizeCollectionFolderPath("collection/"),
 	removeCollectionLineAtZero: true,
 	commanderMarker: "- Commander:",
 	staticCacheTTLDays: 30,
@@ -156,7 +165,7 @@ export class MTGSettingTab extends PluginSettingTab {
 					.setPlaceholder("Example: collection/")
 					.setValue(this.plugin.settings.collectionFolder)
 					.onChange(async (value) => {
-						this.plugin.settings.collectionFolder = value.trim() || "collection/";
+						this.plugin.settings.collectionFolder = normalizeCollectionFolderPath(value);
 						await this.plugin.saveSettings();
 					})
 			);

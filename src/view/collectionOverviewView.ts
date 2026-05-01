@@ -468,9 +468,6 @@ export class CollectionOverviewView extends ItemView {
 			return;
 		}
 
-		const currentContent = await this.app.vault.cachedRead(file);
-		const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
-		const currentLines = currentContent.split(/\r?\n/);
 		const sectionLineCount = sourceRef.sectionText.split(/\r?\n/).length + 2;
 		const currentRows = buildEditableRows(sourceRef.sectionText);
 		const nextRows = adjustCollectionRows(
@@ -484,10 +481,14 @@ export class CollectionOverviewView extends ItemView {
 			this.getSettingsAccessor().collectionCodeBlockLanguage,
 			nextSource
 		);
-		const nextLines = nextBlock.split("\n");
+		await this.app.vault.process(file, (currentContent) => {
+			const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
+			const currentLines = currentContent.split(/\r?\n/);
+			const nextLines = nextBlock.split("\n");
 
-		currentLines.splice(sourceRef.lineStart, sectionLineCount, ...nextLines);
-		await this.app.vault.modify(file, currentLines.join(eol));
+			currentLines.splice(sourceRef.lineStart, sectionLineCount, ...nextLines);
+			return currentLines.join(eol);
+		});
 		await this.refresh();
 	}
 

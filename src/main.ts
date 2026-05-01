@@ -7,7 +7,12 @@ import { buildDeckEditorExtension } from "./render/deckEditorExtension";
 import { buildCollectionEditorExtension } from "./render/collectionEditorExtension";
 import { renderCollectionTable } from "./render/collectionRenderer";
 import { renderDeckTable } from "./render/deckRenderer";
-import { DEFAULT_SETTINGS, MTGSettings, MTGSettingTab } from "./settings";
+import {
+	DEFAULT_SETTINGS,
+	MTGSettings,
+	MTGSettingTab,
+	normalizeCollectionFolderPath,
+} from "./settings";
 import { isPathInFolder } from "./collection/collectionIndex";
 import { COLLECTION_OVERVIEW_VIEW_TYPE, CollectionOverviewView } from "./view/collectionOverviewView";
 
@@ -69,6 +74,7 @@ export default class MtgAssistantPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<MTGSettings>
 		);
+		this.settings.collectionFolder = normalizeCollectionFolderPath(this.settings.collectionFolder);
 	}
 
 	async saveSettings() {
@@ -214,14 +220,15 @@ export default class MtgAssistantPlugin extends Plugin {
 			return;
 		}
 
-		const currentContent = await this.app.vault.cachedRead(file);
-		const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
-		const currentLines = currentContent.split(/\r?\n/);
 		const sectionLineCount = sectionText.split(/\r?\n/).length;
 		const nextBlock = `\`\`\`${this.settings.collectionCodeBlockLanguage}\n${nextSource}\n\`\`\``;
-		const nextLines = nextBlock.split("\n");
+		await this.app.vault.process(file, (currentContent) => {
+			const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
+			const currentLines = currentContent.split(/\r?\n/);
+			const nextLines = nextBlock.split("\n");
 
-		currentLines.splice(lineStart, sectionLineCount, ...nextLines);
-		await this.app.vault.modify(file, currentLines.join(eol));
+			currentLines.splice(lineStart, sectionLineCount, ...nextLines);
+			return currentLines.join(eol);
+		});
 	}
 }

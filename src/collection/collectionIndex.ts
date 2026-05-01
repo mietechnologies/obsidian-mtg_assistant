@@ -1,5 +1,6 @@
-import { App, TFile } from "obsidian";
+import { App, TFile, TFolder } from "obsidian";
 import { parseCollectionList } from "../parser/deckParser";
+import { normalizeCollectionFolderPath } from "../settings";
 import { MTGSettings } from "../settings";
 
 export interface CollectionRow {
@@ -34,7 +35,7 @@ export interface CollectionOverview {
 }
 
 function normalizeFolder(folder: string): string {
-	return folder.replace(/^\/+|\/+$/g, "");
+	return normalizeCollectionFolderPath(folder);
 }
 
 export function isPathInFolder(path: string, folder: string): boolean {
@@ -140,6 +141,41 @@ async function readCollectionFile(
 	return blockCount;
 }
 
+function collectMarkdownFilesInFolder(folder: TFolder): TFile[] {
+	const files: TFile[] = [];
+
+	for (const child of folder.children) {
+		if (child instanceof TFile && child.extension === "md") {
+			files.push(child);
+			continue;
+		}
+
+		if (child instanceof TFolder) {
+			files.push(...collectMarkdownFilesInFolder(child));
+		}
+	}
+
+	return files;
+}
+
+function getCollectionFiles(app: App, folder: string): TFile[] {
+	const normalizedFolder = normalizeFolder(folder);
+	if (!normalizedFolder) {
+		return app.vault.getMarkdownFiles();
+	}
+
+	const abstractFile = app.vault.getAbstractFileByPath(normalizedFolder);
+	if (abstractFile instanceof TFile) {
+		return abstractFile.extension === "md" ? [abstractFile] : [];
+	}
+
+	if (abstractFile instanceof TFolder) {
+		return collectMarkdownFilesInFolder(abstractFile);
+	}
+
+	return [];
+}
+
 export async function loadCollectionTotals(
 	app: App,
 	settings: MTGSettings
@@ -158,9 +194,7 @@ export async function loadCollectionOverview(
 ): Promise<CollectionOverview> {
 	const quantities = new Map<string, number>();
 	const rowsByKey = new Map<string, CollectionRow>();
-	const files = app.vault
-		.getMarkdownFiles()
-		.filter((file) => isPathInFolder(file.path, settings.collectionFolder));
+	const files = getCollectionFiles(app, settings.collectionFolder);
 
 	let sourceFileCount = 0;
 	let sourceBlockCount = 0;
