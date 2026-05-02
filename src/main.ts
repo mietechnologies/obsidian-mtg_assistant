@@ -138,8 +138,8 @@ export default class MtgAssistantPlugin extends Plugin {
 					cache: this.cache,
 					getSettings: () => this.settings,
 					popover: this.popover,
-					onUpdateSource: async (nextSource) => {
-						await this.updateCollectionBlockInFile(
+					onUpdateSource: (nextSource) => {
+						return this.updateCollectionBlockInFile(
 							sourcePath,
 							sectionInfo?.lineStart ?? 0,
 							sectionInfo?.text ?? "",
