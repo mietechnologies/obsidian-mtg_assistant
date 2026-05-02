@@ -336,7 +336,7 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 	link.href = url;
 	link.target = "_blank";
 	link.rel = "noopener noreferrer";
-	link.setAttribute("aria-label", "Open missing cards in TCGPlayer mass entry");
+	link.setAttribute("aria-label", "Open missing cards in mass entry");
 
 	const icon = createSvgElement(tcgPlayerSvg);
 	if (icon) {
@@ -346,7 +346,7 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 	}
 
 	const label = document.createElement("span");
-	label.textContent = "Buy missing cards on TCGPlayer";
+	label.textContent = "Buy missing cards";
 	link.appendChild(label);
 	return link;
 }
@@ -932,7 +932,7 @@ function renderCollectionCoverageSection(
 	headRow.createEl("th", { text: "Need" });
 	headRow.createEl("th", { text: "Owned" });
 	headRow.createEl("th", { text: "Missing" });
-	headRow.createEl("th", { text: "Est. cost" });
+	headRow.createEl("th", { text: "Estimated cost" });
 
 	const tbody = table.createEl("tbody");
 	for (const row of coverage.rows) {

@@ -202,12 +202,12 @@ export default class MtgAssistantPlugin extends Plugin {
 			return;
 		}
 
-		await leaf.setViewState({
-			type: COLLECTION_OVERVIEW_VIEW_TYPE,
-			active: true,
-		});
-		this.app.workspace.revealLeaf(leaf);
-	}
+			await leaf.setViewState({
+				type: COLLECTION_OVERVIEW_VIEW_TYPE,
+				active: true,
+			});
+			void this.app.workspace.revealLeaf(leaf);
+		}
 
 	private async updateCollectionBlockInFile(
 		sourcePath: string,
