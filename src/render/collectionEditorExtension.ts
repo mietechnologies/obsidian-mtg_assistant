@@ -46,7 +46,7 @@ class MtgCollectionWidget extends WidgetType {
 			view.focus();
 		};
 
-		const updateSource = async (nextSource: string): Promise<void> => {
+		const updateSource = (nextSource: string): void => {
 			const nextBlock = buildCollectionBlockText(
 				this.getSettings().collectionCodeBlockLanguage,
 				nextSource

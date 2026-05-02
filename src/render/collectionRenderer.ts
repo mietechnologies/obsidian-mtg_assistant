@@ -24,7 +24,7 @@ interface RenderCollectionTableOptions {
 	cache: CardCache;
 	getSettings: () => MTGSettings;
 	popover: MtgPopover;
-	onUpdateSource: (nextSource: string) => Promise<void>;
+	onUpdateSource: (nextSource: string) => void | Promise<void>;
 	onActivateEditor?: () => void;
 }
 
