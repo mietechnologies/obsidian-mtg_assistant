@@ -9,6 +9,11 @@ export interface ParsedDeck {
 	format?: string;
 }
 
+interface ParsedSectionLabel {
+	name: string;
+	isCommander: boolean;
+}
+
 const CARD_LINE_PATTERNS = [
 	/^(\d+)\s*[xX]\s+(.+?)\s*$/,
 	/^(\d+)[xX]\s*(.+?)\s*$/,
@@ -40,18 +45,37 @@ function normalizeParsedCardName(cardName: string): string {
 	return trimmed;
 }
 
-function parseSectionLabel(line: string, commanderMarker?: string): string | null {
+function normalizeSectionName(section: string): string {
+	return section.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function parseSectionLabel(line: string, commanderMarker?: string): ParsedSectionLabel | null {
 	if (commanderMarker && line.localeCompare(commanderMarker, undefined, { sensitivity: "accent" }) === 0) {
-		return "Commander";
+		return {
+			name: "Commander",
+			isCommander: true,
+		};
 	}
 
 	const headingMatch = /^#{1,6}\s+(.+?)\s*$/.exec(line);
 	if (headingMatch?.[1]) {
-		return headingMatch[1].trim().replace(/:\s*$/, "");
+		const name = headingMatch[1].trim().replace(/:\s*$/, "");
+		return {
+			name,
+			isCommander: normalizeSectionName(name) === "commander",
+		};
 	}
 
 	const match = /^\s*-\s*(.+?)\s*:\s*$/.exec(line);
-	return match?.[1]?.trim() ?? null;
+	if (!match?.[1]) {
+		return null;
+	}
+
+	const name = match[1].trim();
+	return {
+		name,
+		isCommander: normalizeSectionName(name) === "commander",
+	};
 }
 
 function parseCardLine(line: string, minimumQuantity: number): ParsedDeckCard | null {
@@ -92,6 +116,23 @@ function parseFormatLine(line: string): string | null {
 	return match[1].trim().toLowerCase();
 }
 
+function parseCommanderLine(line: string): ParsedDeckCard | null {
+	const match = /^commander\s*:\s*(.+?)\s*$/i.exec(line);
+	if (!match?.[1]) {
+		return null;
+	}
+
+	const parsed = parseCardLine(match[1], 1);
+	if (!parsed) {
+		return null;
+	}
+
+	return {
+		...parsed,
+		section: "Commander",
+	};
+}
+
 function parseCardList(
 	source: string,
 	options: {
@@ -101,11 +142,20 @@ function parseCardList(
 ): ParsedDeck {
 	const cards = new Map<string, ParsedDeckCard>();
 	let currentSection: string | undefined;
+	let currentSectionIsTransient = false;
+	let parsedCardsInCurrentSection = 0;
 	let format: string | undefined;
 
 	for (const rawLine of source.split(/\r?\n/)) {
 		const line = rawLine.trim();
-		if (!line) continue;
+		if (!line) {
+			if (currentSectionIsTransient && parsedCardsInCurrentSection > 0) {
+				currentSection = undefined;
+				currentSectionIsTransient = false;
+				parsedCardsInCurrentSection = 0;
+			}
+			continue;
+		}
 
 		const parsedFormat = parseFormatLine(line);
 		if (parsedFormat) {
@@ -113,9 +163,24 @@ function parseCardList(
 			continue;
 		}
 
+		const commanderCard = parseCommanderLine(line);
+		if (commanderCard) {
+			const key = commanderCard.cardName.toLowerCase();
+			const existing = cards.get(key);
+			if (existing) {
+				existing.quantity += commanderCard.quantity;
+				existing.section = "Commander";
+			} else {
+				cards.set(key, commanderCard);
+			}
+			continue;
+		}
+
 		const section = parseSectionLabel(line, options.commanderMarker?.trim());
 		if (section) {
-			currentSection = section;
+			currentSection = section.name;
+			currentSectionIsTransient = section.isCommander;
+			parsedCardsInCurrentSection = 0;
 			continue;
 		}
 
@@ -136,6 +201,7 @@ function parseCardList(
 			...parsedCard,
 			section: currentSection,
 		});
+		parsedCardsInCurrentSection += 1;
 	}
 
 	return {
