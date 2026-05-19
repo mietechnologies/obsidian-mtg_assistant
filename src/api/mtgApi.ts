@@ -72,6 +72,13 @@ interface ScryfallCard {
 	details?: string;
 }
 
+interface ScryfallCollectionResponse {
+	object: string;
+	data?: ScryfallCard[];
+	not_found?: Array<{ name?: string }>;
+	details?: string;
+}
+
 function extractImageUrl(data: ScryfallCard): string | undefined {
 	return data.image_uris?.normal ?? data.card_faces?.[0]?.image_uris?.normal;
 }
@@ -240,5 +247,112 @@ export async function fetchCard(name: string): Promise<CardResult> {
 			status: "network-error",
 			message: `Network error while contacting Scryfall: ${message}`,
 		};
+	}
+}
+
+export async function fetchCardsByNames(names: string[]): Promise<Map<string, CardResult>> {
+	const results = new Map<string, CardResult>();
+	if (names.length === 0) {
+		return results;
+	}
+	const requestedNamesByKey = new Map(
+		names.map((name) => [name.trim().toLowerCase(), name] as const)
+	);
+
+	const request = () =>
+		scheduleScryfallRequest(() =>
+			requestUrl({
+				url: "https://api.scryfall.com/cards/collection",
+				method: "POST",
+				throw: false,
+				headers: {
+					...getRequestHeaders(),
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					identifiers: names.map((name) => ({ name })),
+				}),
+			})
+		);
+
+	try {
+		let response = await request();
+		if (response.status === 429 || response.status === 403) {
+			buildErrorResult(response);
+			response = await request();
+		}
+
+		if (response.status >= 400) {
+			const error = buildErrorResult(response);
+			for (const name of names) {
+				results.set(name, error);
+			}
+			return results;
+		}
+
+		const payload = response.json as ScryfallCollectionResponse;
+		if (payload.object === "error") {
+			const error: CardResult = {
+				status: "network-error",
+				message: payload.details ?? "Lookup failed.",
+			};
+			for (const name of names) {
+				results.set(name, error);
+			}
+			return results;
+		}
+
+		for (const card of payload.data ?? []) {
+			const requestedName = requestedNamesByKey.get(card.name.trim().toLowerCase()) ?? card.name;
+			const imageUrl = extractImageUrl(card);
+			if (!imageUrl) {
+				results.set(requestedName, {
+					status: "no-image",
+					name: card.name,
+					message: "Card has no preview image available.",
+					metadata: extractMetadata(card),
+				});
+				continue;
+			}
+
+			results.set(requestedName, {
+				status: "success",
+				name: card.name,
+				imageUrl,
+				metadata: extractMetadata(card),
+			});
+		}
+
+		for (const missing of payload.not_found ?? []) {
+			if (!missing.name) {
+				continue;
+			}
+			const requestedName =
+				requestedNamesByKey.get(missing.name.trim().toLowerCase()) ?? missing.name;
+			results.set(requestedName, {
+				status: "not-found",
+				message: "Card not found on Scryfall.",
+			});
+		}
+
+		for (const name of names) {
+			if (!results.has(name)) {
+				results.set(name, {
+					status: "not-found",
+					message: "Card not found on Scryfall.",
+				});
+			}
+		}
+
+		return results;
+	} catch (error: unknown) {
+		const message = error instanceof Error ? error.message : "Unknown network error.";
+		for (const name of names) {
+			results.set(name, {
+				status: "network-error",
+				message: `Network error while contacting Scryfall: ${message}`,
+			});
+		}
+		return results;
 	}
 }

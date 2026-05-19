@@ -2,6 +2,7 @@ import { App } from "obsidian";
 import { EditorState, Extension, Prec, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { CardCache } from "../cache/cardCache";
+import { CollectionIndex } from "../collection/collectionIndex";
 import { MTGSettings } from "../settings";
 import { MtgPopover } from "./cardImageRenderer";
 import { renderDeckTable } from "./deckRenderer";
@@ -17,6 +18,7 @@ class MtgDeckWidget extends WidgetType {
 		private readonly source: string,
 		private readonly blockStart: number,
 		private readonly cache: CardCache,
+		private readonly collectionIndex: CollectionIndex,
 		private readonly getSettings: () => MTGSettings,
 		private readonly popover: MtgPopover
 	) {
@@ -49,6 +51,7 @@ class MtgDeckWidget extends WidgetType {
 			container,
 			this.source,
 			this.cache,
+			this.collectionIndex,
 			this.getSettings,
 			this.popover
 		);
@@ -64,6 +67,7 @@ function buildDecorations(
 	state: EditorState,
 	app: App,
 	cache: CardCache,
+	collectionIndex: CollectionIndex,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover
 ): DecorationSet {
@@ -96,6 +100,7 @@ function buildDecorations(
 					match[2] ?? "",
 					blockStart,
 					cache,
+					collectionIndex,
 					getSettings,
 					popover
 				),
@@ -109,15 +114,23 @@ function buildDecorations(
 export function buildDeckEditorExtension(
 	app: App,
 	cache: CardCache,
+	collectionIndex: CollectionIndex,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover
 ): Extension {
 	const field = StateField.define<DecorationSet>({
 		create(state) {
-			return buildDecorations(state, app, cache, getSettings, popover);
+			return buildDecorations(state, app, cache, collectionIndex, getSettings, popover);
 		},
 		update(_value, transaction) {
-			return buildDecorations(transaction.state, app, cache, getSettings, popover);
+			return buildDecorations(
+				transaction.state,
+				app,
+				cache,
+				collectionIndex,
+				getSettings,
+				popover
+			);
 		},
 		provide: (stateField) => EditorView.decorations.from(stateField),
 	});

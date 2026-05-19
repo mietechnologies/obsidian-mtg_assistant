@@ -1,6 +1,6 @@
 import { App } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
-import { loadCollectionTotals } from "../collection/collectionIndex";
+import { CollectionIndex } from "../collection/collectionIndex";
 import tcgPlayerSvg from "../img/tcg_player.svg";
 import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
@@ -100,6 +100,8 @@ interface DeckValidationIssue {
 	severity: "error" | "warning";
 	message: string;
 }
+
+const DECK_RENDER_TOKEN_ATTR = "data-mtg-deck-render-token";
 
 function getUnitUsdPrice(result: CardPreviewResult): number | null {
 	const usd = result.card?.prices?.usd;
@@ -352,11 +354,14 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 }
 
 async function buildDeckCollectionCoverage(
-	app: App,
 	rows: DeckRow[],
-	settings: MTGSettings
+	collectionTotalsPromise: Promise<{
+		quantities: Map<string, number>;
+		sourceFileCount: number;
+		sourceBlockCount: number;
+	}>
 ): Promise<DeckCollectionCoverage> {
-	const collection = await loadCollectionTotals(app, settings);
+	const collection = await collectionTotalsPromise;
 	const rowsWithDeficits: DeckDeficitRow[] = [];
 	let coveredQuantity = 0;
 	let missingQuantity = 0;
@@ -420,19 +425,19 @@ async function mapDeckRows(
 	cards: ParsedDeckCard[],
 	cache: CardCache,
 	deckFormat: DeckFormat | null,
-	concurrency = 4
+	onProgress?: (completed: number, total: number) => void
 ): Promise<DeckRow[]> {
-	const rows: DeckRow[] = [];
-	let nextIndex = 0;
-
-	const worker = async (): Promise<void> => {
-		while (nextIndex < cards.length) {
-			const currentIndex = nextIndex++;
-			const card = cards[currentIndex];
-			if (!card) {
-				continue;
-			}
-			const resolved = await cache.resolveCard(card.cardName);
+	const resolvedMap = await cache.resolveCardsMetadata(
+		cards.map((card) => card.cardName),
+		onProgress
+	);
+	return sortRows(
+		cards.map((card) => {
+			const resolved =
+				resolvedMap.get(normalizeCardKey(card.cardName)) ?? {
+					status: "not-found" as const,
+					cardName: card.cardName,
+				};
 			const section = card.section
 				? titleCaseSection(card.section)
 				: inferSection(resolved.card?.typeLine);
@@ -442,7 +447,7 @@ async function mapDeckRows(
 				deckFormat
 			);
 
-			rows[currentIndex] = {
+			return {
 				lookupName: card.cardName,
 				quantity: card.quantity,
 				cardName: resolved.cardName,
@@ -461,13 +466,25 @@ async function mapDeckRows(
 						? getDeckLegalityMessage(resolved.cardName, deckFormat, deckLegalityStatus)
 						: undefined,
 			};
-		}
-	};
-
-	await Promise.all(
-		Array.from({ length: Math.min(concurrency, Math.max(cards.length, 1)) }, () => worker())
+		})
 	);
-	return sortRows(rows);
+}
+
+function createInitialDeckRows(cards: ParsedDeckCard[]): DeckRow[] {
+	return sortRows(
+		cards.map((card) => ({
+			lookupName: card.cardName,
+			quantity: card.quantity,
+			cardName: card.cardName,
+			section: card.section ? titleCaseSection(card.section) : "Other",
+			typeLine: undefined,
+			manaValue: undefined,
+			colorIdentity: [],
+			keywords: [],
+			priceText: "Loading…",
+			priceValue: null,
+		}))
+	);
 }
 
 function createCardNameCell(
@@ -548,7 +565,7 @@ function calculateTotals(rows: DeckRow[]): DeckTotals {
 	return { totalQuantity, totalPrice, hasEstimatedPrices };
 }
 
-function renderTableFooter(table: HTMLElement, rows: DeckRow[]): void {
+function renderTableFooter(table: HTMLElement, rows: DeckRow[], totalTextOverride?: string): void {
 	const totals = calculateTotals(rows);
 	const tfoot = table.createEl("tfoot");
 	const footerRow = tfoot.createEl("tr", { cls: "mtg-deck-footer-row" });
@@ -561,9 +578,60 @@ function renderTableFooter(table: HTMLElement, rows: DeckRow[]): void {
 		cls: "mtg-deck-footer-cell",
 	});
 	footerRow.createEl("td", {
-		text: formatDeckTotal(totals),
+		text: totalTextOverride ?? formatDeckTotal(totals),
 		cls: "mtg-deck-price mtg-deck-footer-cell",
 	});
+}
+
+function renderUnsupportedDeckFormatWarning(
+	containerEl: HTMLElement,
+	rawFormat: string | undefined,
+	deckFormat: DeckFormat | null
+): void {
+	if (!rawFormat || deckFormat) {
+		return;
+	}
+
+	const warningRow = containerEl.createEl("p", { cls: "mtg-deck-validation-message" });
+	warningRow.appendChild(
+		createInlineWarning(
+			`Unsupported deck format "${rawFormat}". Supported formats: ${SUPPORTED_DECK_FORMAT_LABELS}.`,
+			{
+				label: "Unsupported deck format",
+				symbol: "⚠️",
+			}
+		)
+	);
+	warningRow.append(" Deck legality validation skipped.");
+}
+
+function renderResolvedDeckContent(
+	containerEl: HTMLElement,
+	rows: DeckRow[],
+	coverage: DeckCollectionCoverage,
+	analytics: DeckAnalytics,
+	validationIssues: DeckValidationIssue[],
+	deckFormat: DeckFormat | null,
+	rawFormat: string | undefined,
+	cache: CardCache,
+	getSettings: () => MTGSettings,
+	popover: MtgPopover,
+	onRetry: (cardName: string) => Promise<void>
+): void {
+	renderUnsupportedDeckFormatWarning(containerEl, rawFormat, deckFormat);
+
+	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
+	const thead = table.createEl("thead");
+	const headRow = thead.createEl("tr");
+	headRow.createEl("th", { text: "Qty" });
+	headRow.createEl("th", { text: "Card" });
+	headRow.createEl("th", { text: "Current price" });
+
+	const tbody = table.createEl("tbody");
+	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry);
+	renderTableFooter(table, rows);
+	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
+	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, rawFormat);
 }
 
 function buildDeckAnalytics(rows: DeckRow[]): DeckAnalytics {
@@ -996,6 +1064,7 @@ export async function renderDeckTable(
 	containerEl: HTMLElement,
 	source: string,
 	cache: CardCache,
+	collectionIndex: CollectionIndex,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover
 ): Promise<void> {
@@ -1011,37 +1080,15 @@ export async function renderDeckTable(
 		return;
 	}
 
-	const loadingEl = containerEl.createEl("p", {
-		text: "Loading deck data…",
-		cls: "mtg-card-popover-message",
-	});
-
 	const deckFormat = normalizeDeckFormat(parsed.format);
-	const rows = await mapDeckRows(parsed.cards, cache, deckFormat);
-	const coverage = await buildDeckCollectionCoverage(app, rows, getSettings());
-	const analytics = buildDeckAnalytics(rows);
-	const validationIssues = buildDeckValidation(rows, deckFormat);
-	if (!loadingEl.isConnected) {
-		return;
-	}
-
-	containerEl.empty();
+	const collectionTotalsPromise = collectionIndex.loadTotals();
 	containerEl.removeClass("is-updating");
+	const renderToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	containerEl.setAttribute(DECK_RENDER_TOKEN_ATTR, renderToken);
 
-	if (parsed.format && !deckFormat) {
-		const warningRow = containerEl.createEl("p", { cls: "mtg-deck-validation-message" });
-		warningRow.appendChild(
-			createInlineWarning(
-				`Unsupported deck format "${parsed.format}". Supported formats: ${SUPPORTED_DECK_FORMAT_LABELS}.`,
-				{
-					label: "Unsupported deck format",
-					symbol: "⚠️",
-				}
-			)
-		);
-		warningRow.append(" Deck legality validation skipped.");
-	}
+	renderUnsupportedDeckFormatWarning(containerEl, parsed.format, deckFormat);
 
+	const initialRows = createInitialDeckRows(parsed.cards);
 	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
@@ -1054,13 +1101,72 @@ export async function renderDeckTable(
 		containerEl.addClass("is-updating");
 		try {
 			await cache.evictCardLookup(cardName);
-			await renderDeckTable(app, containerEl, source, cache, getSettings, popover);
+			await renderDeckTable(
+				app,
+				containerEl,
+				source,
+				cache,
+				collectionIndex,
+				getSettings,
+				popover
+			);
 		} finally {
 			containerEl.removeClass("is-updating");
 		}
 	};
-	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry);
-	renderTableFooter(table, rows);
-	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
-	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, parsed.format);
+	renderTableRows(tbody, initialRows, cache, getSettings, popover, async () => Promise.resolve());
+	renderTableFooter(table, initialRows, "Loading…");
+
+	const metadataLoadingEl = containerEl.createEl("p", {
+		text: `Loading deck metadata 0/${parsed.cards.length}…`,
+		cls: "mtg-card-popover-message",
+	});
+	containerEl.createEl("p", {
+		text: "Collection coverage will appear when deck metadata is ready.",
+		cls: "mtg-card-popover-message",
+	});
+	containerEl.createEl("p", {
+		text: "Deck analytics and validation will appear when deck metadata is ready.",
+		cls: "mtg-card-popover-message",
+	});
+
+	void mapDeckRows(parsed.cards, cache, deckFormat, (completed, total) => {
+		if (
+			!metadataLoadingEl.isConnected ||
+			containerEl.getAttribute(DECK_RENDER_TOKEN_ATTR) !== renderToken
+		) {
+			return;
+		}
+
+		metadataLoadingEl.textContent =
+			completed >= total
+				? "Finalizing deck metadata…"
+				: `Loading deck metadata ${completed}/${total}…`;
+	}).then(async (rows) => {
+		const coverage = await buildDeckCollectionCoverage(rows, collectionTotalsPromise);
+		const analytics = buildDeckAnalytics(rows);
+		const validationIssues = buildDeckValidation(rows, deckFormat);
+		if (
+			!containerEl.isConnected ||
+			containerEl.getAttribute(DECK_RENDER_TOKEN_ATTR) !== renderToken
+		) {
+			return;
+		}
+
+		containerEl.empty();
+		containerEl.removeClass("is-updating");
+		renderResolvedDeckContent(
+			containerEl,
+			rows,
+			coverage,
+			analytics,
+			validationIssues,
+			deckFormat,
+			parsed.format,
+			cache,
+			getSettings,
+			popover,
+			onRetry
+		);
+	});
 }

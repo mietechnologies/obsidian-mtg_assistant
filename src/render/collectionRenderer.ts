@@ -28,6 +28,8 @@ interface RenderCollectionTableOptions {
 	onActivateEditor?: () => void;
 }
 
+const COLLECTION_RENDER_TOKEN_ATTR = "data-mtg-collection-render-token";
+
 function normalizeCardKey(cardName: string): string {
 	return cardName.trim().toLowerCase();
 }
@@ -60,18 +62,19 @@ function sortRows(rows: CollectionRow[]): CollectionRow[] {
 async function mapCollectionRows(
 	cards: ParsedDeckCard[],
 	cache: CardCache,
-	concurrency = 4
+	onProgress?: (completed: number, total: number) => void,
 ): Promise<CollectionRow[]> {
-	const rows: CollectionRow[] = [];
-	let nextIndex = 0;
-
-	const worker = async (): Promise<void> => {
-		while (nextIndex < cards.length) {
-			const currentIndex = nextIndex++;
-			const card = cards[currentIndex];
-			if (!card) continue;
-
-			const resolved = await cache.resolveCard(card.cardName);
+	const resolvedMap = await cache.resolveCardsMetadata(
+		cards.map((card) => card.cardName),
+		onProgress
+	);
+	return sortRows(
+		cards.map((card) => {
+			const resolved =
+				resolvedMap.get(normalizeCardKey(card.cardName)) ?? {
+					status: "not-found" as const,
+					cardName: card.cardName,
+				};
 			const inferredSection = inferSection(resolved.card?.typeLine);
 			const section =
 				inferredSection !== "Other"
@@ -81,7 +84,7 @@ async function mapCollectionRows(
 						: inferredSection;
 			const unitPrice = getUnitUsdPrice(resolved);
 
-			rows[currentIndex] = {
+			return {
 				key: normalizeCardKey(resolved.cardName),
 				lookupName: card.cardName,
 				quantity: card.quantity,
@@ -93,13 +96,23 @@ async function mapCollectionRows(
 				rateLimitedMessage:
 					resolved.status === "rate-limited" ? resolved.message : undefined,
 			};
-		}
-	};
-
-	await Promise.all(
-		Array.from({ length: Math.min(concurrency, Math.max(cards.length, 1)) }, () => worker())
+		})
 	);
-	return sortRows(rows);
+}
+
+function createInitialCollectionRows(cards: ParsedDeckCard[]): CollectionRow[] {
+	return sortRows(
+		cards.map((card) => ({
+			key: normalizeCardKey(card.cardName),
+			lookupName: card.cardName,
+			quantity: card.quantity,
+			cardName: card.cardName,
+			section: card.section ? titleCaseSection(card.section) : "Other",
+			colorIdentity: [],
+			priceText: "Loading…",
+			priceValue: null,
+		}))
+	);
 }
 
 function buildCollectionSource(rows: CollectionRow[]): string {
@@ -263,18 +276,10 @@ export async function renderCollectionTable(
 		return;
 	}
 
-	const loadingEl = containerEl.createEl("p", {
-		text: "Loading collection data…",
-		cls: "mtg-card-popover-message",
-	});
-
-	const rows = await mapCollectionRows(parsed.cards, cache);
-	if (!loadingEl.isConnected) {
-		return;
-	}
-
-	containerEl.empty();
 	containerEl.removeClass("is-updating");
+	const renderToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+	containerEl.setAttribute(COLLECTION_RENDER_TOKEN_ATTR, renderToken);
+	let rows = createInitialCollectionRows(parsed.cards);
 
 	let isUpdating = false;
 	const onAdjust = async (key: string, delta: number): Promise<void> => {
@@ -305,6 +310,11 @@ export async function renderCollectionTable(
 		}
 	};
 
+	const loadingEl = containerEl.createEl("p", {
+		text: "Loading collection metadata 0/" + String(parsed.cards.length) + "…",
+		cls: "mtg-card-popover-message",
+	});
+
 	if (onActivateEditor) {
 		containerEl.addEventListener("click", (event) => {
 			const target = event.target;
@@ -328,4 +338,30 @@ export async function renderCollectionTable(
 
 	const tbody = table.createEl("tbody");
 	renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry);
+
+	void mapCollectionRows(parsed.cards, cache, (completed, total) => {
+		if (
+			!loadingEl.isConnected ||
+			containerEl.getAttribute(COLLECTION_RENDER_TOKEN_ATTR) !== renderToken
+		) {
+			return;
+		}
+
+		loadingEl.textContent =
+			completed >= total
+				? "Finalizing collection metadata…"
+				: `Loading collection metadata ${completed}/${total}…`;
+	}).then((resolvedRows) => {
+		if (
+			!containerEl.isConnected ||
+			containerEl.getAttribute(COLLECTION_RENDER_TOKEN_ATTR) !== renderToken
+		) {
+			return;
+		}
+
+		rows = resolvedRows;
+		loadingEl.remove();
+		tbody.empty();
+		renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry);
+	});
 }

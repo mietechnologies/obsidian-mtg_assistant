@@ -13,12 +13,13 @@ import {
 	MTGSettingTab,
 	normalizeCollectionFolderPath,
 } from "./settings";
-import { isPathInFolder } from "./collection/collectionIndex";
+import { CollectionIndex, isPathInFolder } from "./collection/collectionIndex";
 import { COLLECTION_OVERVIEW_VIEW_TYPE, CollectionOverviewView } from "./view/collectionOverviewView";
 
 export default class MtgAssistantPlugin extends Plugin {
 	settings: MTGSettings;
 	cache: CardCache;
+	collectionIndex: CollectionIndex;
 	private popover: MtgPopover;
 	private editorExtensions: Extension[] = [];
 
@@ -27,6 +28,7 @@ export default class MtgAssistantPlugin extends Plugin {
 
 		this.cache = new CardCache(this.app, this.manifest.id, () => this.settings);
 		await this.cache.init();
+		this.collectionIndex = new CollectionIndex(this.app, () => this.settings);
 
 		this.popover = new MtgPopover();
 
@@ -41,7 +43,13 @@ export default class MtgAssistantPlugin extends Plugin {
 			buildEditorExtension(this.cache, () => this.settings, this.popover)
 		);
 		this.editorExtensions.push(
-			buildDeckEditorExtension(this.app, this.cache, () => this.settings, this.popover)
+			buildDeckEditorExtension(
+				this.app,
+				this.cache,
+				this.collectionIndex,
+				() => this.settings,
+				this.popover
+			)
 		);
 		this.editorExtensions.push(
 			buildCollectionEditorExtension(this.cache, () => this.settings, this.popover)
@@ -49,7 +57,14 @@ export default class MtgAssistantPlugin extends Plugin {
 		this.registerEditorExtension(this.editorExtensions);
 		this.registerView(
 			COLLECTION_OVERVIEW_VIEW_TYPE,
-			(leaf) => new CollectionOverviewView(leaf, this.cache, () => this.settings, this.popover)
+			(leaf) =>
+				new CollectionOverviewView(
+					leaf,
+					this.cache,
+					this.collectionIndex,
+					() => this.settings,
+					this.popover
+				)
 		);
 		this.addCommand({
 			id: "open-collection-overview",
@@ -79,6 +94,7 @@ export default class MtgAssistantPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		this.collectionIndex.invalidate();
 		this.refreshViews();
 	}
 
@@ -121,6 +137,7 @@ export default class MtgAssistantPlugin extends Plugin {
 					container,
 					codeEl.textContent ?? "",
 					this.cache,
+					this.collectionIndex,
 					() => this.settings,
 					this.popover
 				);
@@ -157,6 +174,7 @@ export default class MtgAssistantPlugin extends Plugin {
 				return;
 			}
 
+			this.collectionIndex.invalidate();
 			this.refreshViews();
 		};
 
@@ -189,6 +207,7 @@ export default class MtgAssistantPlugin extends Plugin {
 					isPathInFolder(oldPath, this.settings.collectionFolder) ||
 					isPathInFolder(file.path, this.settings.collectionFolder)
 				) {
+					this.collectionIndex.invalidate();
 					this.refreshViews();
 				}
 			})

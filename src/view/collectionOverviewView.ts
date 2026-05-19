@@ -1,9 +1,9 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import { CardPreviewResult, CardCache } from "../cache/cardCache";
 import {
+	CollectionIndex,
 	CollectionRow,
 	CollectionSourceRef,
-	loadCollectionOverview,
 } from "../collection/collectionIndex";
 import { sectionSortKey, titleCaseSection } from "../render/cardSections";
 import { attachHoverEvents, MtgPopover } from "../render/cardImageRenderer";
@@ -313,50 +313,40 @@ function sortHoldings(rows: ResolvedCollectionRow[], sortBy: HoldingsSort): Reso
 
 async function resolveCollectionRows(
 	rows: CollectionRow[],
-	cache: CardCache,
-	concurrency = 4
+	cache: CardCache
 ): Promise<ResolvedCollectionRow[]> {
-	const resolvedRows: ResolvedCollectionRow[] = [];
-	let nextIndex = 0;
-
-	const worker = async (): Promise<void> => {
-		while (nextIndex < rows.length) {
-			const currentIndex = nextIndex++;
-			const row = rows[currentIndex];
-			if (!row) continue;
-
-			const resolved = await cache.resolveCard(row.cardName);
-			const unitPrice = getUnitUsdPrice(resolved);
-			resolvedRows[currentIndex] = {
-				...row,
-				resolvedName: resolved.cardName,
-				manaCosts:
-					resolved.card?.manaCosts ??
-					(resolved.card?.manaCost ? [resolved.card.manaCost] : undefined),
-				manaValue: resolved.card?.manaValue,
-				typeLine: resolved.card?.typeLine,
-				displayType: normalizeDisplayType(resolved.card?.typeLine),
-				keywords: resolved.card?.keywords ?? [],
-				oracleTexts: resolved.card?.oracleTexts ?? (resolved.card?.oracleText ? [resolved.card.oracleText] : []),
-				typeCategories: extractTypeCategories(resolved.card?.typeLine),
-				searchText: [
-					resolved.cardName,
-					resolved.card?.typeLine ?? "",
-					...(resolved.card?.keywords ?? []),
-					...(resolved.card?.oracleTexts ?? (resolved.card?.oracleText ? [resolved.card.oracleText] : [])),
-				]
-					.join(" ")
-					.toLowerCase(),
-				unitPrice,
-				totalPrice: unitPrice === null ? null : unitPrice * row.quantity,
+	const resolvedMap = await cache.resolveCardsMetadata(rows.map((row) => row.cardName));
+	return rows.map((row) => {
+		const resolved =
+			resolvedMap.get(row.key) ?? {
+				status: "not-found" as const,
+				cardName: row.cardName,
 			};
-		}
-	};
-
-	await Promise.all(
-		Array.from({ length: Math.min(concurrency, Math.max(rows.length, 1)) }, () => worker())
-	);
-	return resolvedRows;
+		const unitPrice = getUnitUsdPrice(resolved);
+		return {
+			...row,
+			resolvedName: resolved.cardName,
+			manaCosts:
+				resolved.card?.manaCosts ??
+				(resolved.card?.manaCost ? [resolved.card.manaCost] : undefined),
+			manaValue: resolved.card?.manaValue,
+			typeLine: resolved.card?.typeLine,
+			displayType: normalizeDisplayType(resolved.card?.typeLine),
+			keywords: resolved.card?.keywords ?? [],
+			oracleTexts: resolved.card?.oracleTexts ?? (resolved.card?.oracleText ? [resolved.card.oracleText] : []),
+			typeCategories: extractTypeCategories(resolved.card?.typeLine),
+			searchText: [
+				resolved.cardName,
+				resolved.card?.typeLine ?? "",
+				...(resolved.card?.keywords ?? []),
+				...(resolved.card?.oracleTexts ?? (resolved.card?.oracleText ? [resolved.card.oracleText] : [])),
+			]
+				.join(" ")
+				.toLowerCase(),
+			unitPrice,
+			totalPrice: unitPrice === null ? null : unitPrice * row.quantity,
+		};
+	});
 }
 
 function renderCollectionLink(view: CollectionOverviewView, containerEl: HTMLElement, row: ResolvedCollectionRow): void {
@@ -435,6 +425,7 @@ export class CollectionOverviewView extends ItemView {
 	constructor(
 		leaf: WorkspaceLeaf,
 		readonly cache: CardCache,
+		private readonly collectionIndex: CollectionIndex,
 		readonly getSettingsAccessor: () => MTGSettings,
 		readonly popover: MtgPopover
 	) {
@@ -599,7 +590,7 @@ export class CollectionOverviewView extends ItemView {
 			cls: "mtg-card-popover-message",
 		});
 
-		const overview = await loadCollectionOverview(this.app, this.getSettingsAccessor());
+		const overview = await this.collectionIndex.loadOverview();
 		const resolvedRows = await resolveCollectionRows(overview.rows, this.cache);
 		if (!loadingEl.isConnected) {
 			return;

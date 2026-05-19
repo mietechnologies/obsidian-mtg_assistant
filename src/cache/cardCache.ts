@@ -1,5 +1,5 @@
 import { App, requestUrl, RequestUrlResponse } from "obsidian";
-import { CardLookupStatus, CardMetadataFields, fetchCard } from "../api/mtgApi";
+import { CardLookupStatus, CardMetadataFields, fetchCard, fetchCardsByNames } from "../api/mtgApi";
 import { MTGSettings } from "../settings";
 
 interface MetadataEntry {
@@ -27,6 +27,10 @@ export interface CardPreviewResult {
 	imageSrc?: string;
 	message?: string;
 	card?: CardMetadataFields;
+}
+
+interface ResolveCardOptions {
+	includeImage?: boolean;
 }
 
 // Manages in-memory and on-disk card image caching.
@@ -58,31 +62,114 @@ export class CardCache {
 		await this.loadMetadata();
 	}
 
-	async resolveCard(cardName: string): Promise<CardPreviewResult> {
+	async resolveCard(
+		cardName: string,
+		options: ResolveCardOptions = {}
+	): Promise<CardPreviewResult> {
+		const includeImage = options.includeImage ?? true;
 		const key = this.normalizeKey(cardName);
-		const inflight = this.inflightLookups.get(key);
+		const inflightKey = this.getInflightKey(key, includeImage);
+		const inflight = this.inflightLookups.get(inflightKey);
 		if (inflight) {
 			return inflight;
 		}
 
-		const lookupPromise = this.resolveCardInternal(cardName, key);
-		this.inflightLookups.set(key, lookupPromise);
+		const lookupPromise = this.resolveCardInternal(cardName, key, includeImage);
+		this.inflightLookups.set(inflightKey, lookupPromise);
 
 		try {
 			return await lookupPromise;
 		} finally {
-			this.inflightLookups.delete(key);
+			this.inflightLookups.delete(inflightKey);
 		}
 	}
 
-	private async resolveCardInternal(cardName: string, key: string): Promise<CardPreviewResult> {
+	async resolveCardMetadata(cardName: string): Promise<CardPreviewResult> {
+		return this.resolveCard(cardName, { includeImage: false });
+	}
+
+	async resolveCardsMetadata(
+		cardNames: string[],
+		onProgress?: (completed: number, total: number) => void
+	): Promise<Map<string, CardPreviewResult>> {
+		const results = new Map<string, CardPreviewResult>();
+		const uniqueNames = Array.from(
+			new Map(cardNames.map((name) => [this.normalizeKey(name), name])).values()
+		);
+		const namesNeedingFetch: string[] = [];
+		let completed = 0;
+		const total = uniqueNames.length;
+		const staticTtlMs = this.getSettings().staticCacheTTLDays * 24 * 60 * 60 * 1000;
+
+		for (const cardName of uniqueNames) {
+			const key = this.normalizeKey(cardName);
+			const meta = this.metadata.get(key);
+			if (meta && this.isFresh(this.getStaticTimestamp(meta), staticTtlMs)) {
+				const cachedEntry = await this.resolveFromMetadata(key, meta, false);
+				if (cachedEntry) {
+					results.set(key, this.toPreviewResult(cardName, cachedEntry));
+					completed += 1;
+					onProgress?.(completed, total);
+					continue;
+				}
+			}
+
+			namesNeedingFetch.push(cardName);
+		}
+
+		for (let index = 0; index < namesNeedingFetch.length; index += 75) {
+			const batchNames = namesNeedingFetch.slice(index, index + 75);
+			const batchResults = await fetchCardsByNames(batchNames);
+			const timestamp = Date.now();
+			const metadataEntries = new Map<string, MetadataEntry>();
+			for (const batchName of batchNames) {
+				const key = this.normalizeKey(batchName);
+				let fetched = batchResults.get(batchName) ?? {
+					status: "not-found" as const,
+					message: "Card not found on Scryfall.",
+				};
+				if (fetched.status === "not-found") {
+					fetched = await fetchCard(batchName);
+				}
+				const entry: MemoryCacheEntry = {
+					status: fetched.status,
+					resolvedName: fetched.name,
+					message: fetched.message,
+					card: fetched.metadata,
+				};
+				this.memoryCache.set(key, entry);
+				metadataEntries.set(key, {
+					timestamp,
+					staticTimestamp: timestamp,
+					priceTimestamp: timestamp,
+					status: fetched.status,
+					imageUrl: fetched.imageUrl,
+					resolvedName: fetched.name,
+					message: fetched.message,
+					card: fetched.metadata,
+				});
+				results.set(key, this.toPreviewResult(batchName, entry));
+				completed += 1;
+				onProgress?.(completed, total);
+			}
+			await this.setMetadataEntries(metadataEntries);
+		}
+
+		return results;
+	}
+
+	private async resolveCardInternal(
+		cardName: string,
+		key: string,
+		includeImage: boolean
+	): Promise<CardPreviewResult> {
 		const settings = this.getSettings();
 		const meta = this.metadata.get(key);
 		const staticTtlMs = settings.staticCacheTTLDays * 24 * 60 * 60 * 1000;
 		const priceTtlMs = settings.priceCacheHours * 60 * 60 * 1000;
 
 		if (meta && this.isFresh(this.getStaticTimestamp(meta), staticTtlMs)) {
-			const cachedEntry = await this.resolveFromMetadata(key, meta);
+			const cachedEntry = await this.resolveFromMetadata(key, meta, includeImage);
 			if (cachedEntry) {
 				if (!this.isPriceRefreshNeeded(meta, priceTtlMs) || meta.status !== "success") {
 					return this.toPreviewResult(cardName, cachedEntry);
@@ -136,30 +223,25 @@ export class CardCache {
 			return this.toPreviewResult(cardName, entry);
 		}
 
-		const imagePath = this.getImagePath(key);
-		let imageSrc: string;
-		if (await this.app.vault.adapter.exists(imagePath)) {
-			imageSrc = await this.readAsBlobUrl(imagePath);
-		} else {
-			const download = await this.downloadImage(fetched.imageUrl, imagePath);
-			if (!download.ok) {
-			const entry: MemoryCacheEntry = {
-				status: "download-error",
-				resolvedName: fetched.name,
-				message: download.message,
-			};
-			this.memoryCache.set(key, entry);
-			return this.toPreviewResult(cardName, entry);
-		}
-
-			imageSrc = await this.readAsBlobUrl(imagePath, download.contentType);
-		}
 		const entry: MemoryCacheEntry = {
 			status: "success",
-			imageSrc,
 			resolvedName: fetched.name,
 			card: fetched.metadata,
 		};
+		if (includeImage) {
+			const imageResult = await this.getOrCreateImageSrc(key, fetched.imageUrl);
+			if (!imageResult.ok) {
+				const failedEntry: MemoryCacheEntry = {
+					status: "download-error",
+					resolvedName: fetched.name,
+					message: imageResult.message,
+					card: fetched.metadata,
+				};
+				this.memoryCache.set(key, failedEntry);
+				return this.toPreviewResult(cardName, failedEntry);
+			}
+			entry.imageSrc = imageResult.imageSrc;
+		}
 		this.memoryCache.set(key, entry);
 		await this.setMetadata(key, {
 			timestamp: now,
@@ -196,7 +278,8 @@ export class CardCache {
 	async evictCardLookup(cardName: string): Promise<void> {
 		const key = this.normalizeKey(cardName);
 		this.memoryCache.delete(key);
-		this.inflightLookups.delete(key);
+		this.inflightLookups.delete(this.getInflightKey(key, false));
+		this.inflightLookups.delete(this.getInflightKey(key, true));
 		if (!this.metadata.delete(key)) {
 			return;
 		}
@@ -219,9 +302,13 @@ export class CardCache {
 		};
 	}
 
-	private async resolveFromMetadata(key: string, meta: MetadataEntry): Promise<MemoryCacheEntry | null> {
+	private async resolveFromMetadata(
+		key: string,
+		meta: MetadataEntry,
+		includeImage: boolean
+	): Promise<MemoryCacheEntry | null> {
 		const cached = this.memoryCache.get(key);
-		if (cached) {
+		if (cached && (!includeImage || cached.imageSrc)) {
 			return cached;
 		}
 
@@ -234,6 +321,22 @@ export class CardCache {
 			};
 			this.memoryCache.set(key, entry);
 			return entry;
+		}
+
+		if (!includeImage) {
+			const entry: MemoryCacheEntry = {
+				status: "success",
+				resolvedName: meta.resolvedName,
+				card: meta.card,
+			};
+			this.memoryCache.set(key, {
+				...cached,
+				...entry,
+			});
+			return {
+				...cached,
+				...entry,
+			};
 		}
 
 		const imagePath = this.getImagePath(key);
@@ -259,6 +362,10 @@ export class CardCache {
 	private getImagePath(key: string): string {
 		const encodedKey = encodeURIComponent(key).replace(/%/g, "_");
 		return `${this.imagesDir}/${encodedKey}.img`;
+	}
+
+	private getInflightKey(key: string, includeImage: boolean): string {
+		return `${key}::${includeImage ? "image" : "metadata"}`;
 	}
 
 	private async ensureDirectories(): Promise<void> {
@@ -310,6 +417,37 @@ export class CardCache {
 		this.metadata.set(key, entry);
 		const serialized = Object.fromEntries(this.metadata.entries());
 		await this.app.vault.adapter.write(this.metadataPath, JSON.stringify(serialized, null, 2));
+	}
+
+	private async setMetadataEntries(entries: Map<string, MetadataEntry>): Promise<void> {
+		for (const [key, entry] of entries.entries()) {
+			this.metadata.set(key, entry);
+		}
+		const serialized = Object.fromEntries(this.metadata.entries());
+		await this.app.vault.adapter.write(this.metadataPath, JSON.stringify(serialized, null, 2));
+	}
+
+	private async getOrCreateImageSrc(
+		key: string,
+		imageUrl: string
+	): Promise<{ ok: true; imageSrc: string } | { ok: false; message: string }> {
+		const imagePath = this.getImagePath(key);
+		if (await this.app.vault.adapter.exists(imagePath)) {
+			return {
+				ok: true,
+				imageSrc: await this.readAsBlobUrl(imagePath),
+			};
+		}
+
+		const download = await this.downloadImage(imageUrl, imagePath);
+		if (!download.ok) {
+			return { ok: false, message: download.message };
+		}
+
+		return {
+			ok: true,
+			imageSrc: await this.readAsBlobUrl(imagePath, download.contentType),
+		};
 	}
 
 	private async downloadImage(
