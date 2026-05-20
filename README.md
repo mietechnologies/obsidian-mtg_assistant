@@ -47,9 +47,7 @@ Deck lists are rendered from fenced code blocks. The default code block tag is `
 ~~~md
 ```mtg-deck
 format: commander
-
-- Commander:
-Atraxa, Praetors' Voice
+commander: Atraxa, Praetors' Voice
 
 - Creatures:
 Birds of Paradise
@@ -66,8 +64,9 @@ Deck list behavior:
 - One card per line.
 - Explicit quantities like `4 Lightning Bolt` are supported.
 - Bare card lines like `Sol Ring` are treated as quantity `1`.
+- An inline `commander:` line is supported and preferred for commander-style formats.
 - Optional section labels are supported.
-- A configurable commander marker is supported.
+- A configurable legacy commander section marker is still supported.
 - An optional `format:` line enables format-specific validation.
 
 Supported deck formats:
@@ -147,7 +146,7 @@ The settings tab includes:
 - `Foil price suffix`
 - `Etched price suffix`
 - `Deck list code block tag`
-- `Commander marker`
+- `Commander marker (legacy)`
 - `Collection list code block tag`
 - `Collections folder`
 - `Remove collection rows at zero quantity`

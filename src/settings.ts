@@ -125,8 +125,8 @@ export class MTGSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Commander marker")
-			.setDesc("Section label used to mark the commander block in a deck list.")
+			.setName("Commander marker (legacy)")
+			.setDesc("Legacy section label used to mark the commander block in older deck lists.")
 			.addText((text) =>
 				text
 					.setPlaceholder("Example: - commander:")
