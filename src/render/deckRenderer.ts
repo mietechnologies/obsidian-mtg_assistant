@@ -4,7 +4,8 @@ import { CollectionIndex } from "../collection/collectionIndex";
 import type { CollectionOverview, CollectionRow, CollectionTotals } from "../collection/collectionIndex";
 import tcgPlayerSvg from "../img/tcg_player.svg";
 import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
-import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
+import { attachHoverEvents, MtgPopover, renderOwnershipPopoverSection } from "./cardImageRenderer";
+import { OwnershipBlockRef } from "../ownership/cardOwnership";
 import { MTGSettings } from "../settings";
 import { inferSection, normalizeSectionName, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createColorIdentityElement } from "./colorIdentity";
@@ -264,10 +265,7 @@ function buildCollectionSourceOptions(
 	row: DeckRow,
 	collectionOverview: CollectionOverview
 ): TransferSourceOption[] {
-	const collectionRow = collectionOverview.rows.find((candidate) =>
-		normalizeCardKey(candidate.cardName) === normalizeCardKey(row.lookupName) ||
-		normalizeCardKey(candidate.cardName) === normalizeCardKey(row.cardName)
-	);
+	const collectionRow = findCollectionRow(row, collectionOverview);
 	if (!collectionRow) {
 		return [];
 	}
@@ -282,6 +280,35 @@ function buildCollectionSourceOptions(
 			label: buildCollectionSourceLabel(collectionRow, sourceRef),
 			availableQuantity: sourceRef.quantity,
 		}));
+}
+
+function buildCollectionOwnershipRefs(
+	row: DeckRow,
+	collectionOverview: CollectionOverview
+): OwnershipBlockRef[] {
+	const collectionRow = findCollectionRow(row, collectionOverview);
+	if (!collectionRow) {
+		return [];
+	}
+
+	return collectionRow.sourceRefs
+		.filter((sourceRef) => sourceRef.quantity > 0)
+		.map((sourceRef) => ({
+			path: sourceRef.sourcePath,
+			lineStart: sourceRef.lineStart,
+			language: "collection" as const,
+			quantity: sourceRef.quantity,
+		}));
+}
+
+function findCollectionRow(
+	row: DeckRow,
+	collectionOverview: CollectionOverview
+): CollectionRow | undefined {
+	return collectionOverview.rows.find((candidate) =>
+		normalizeCardKey(candidate.cardName) === normalizeCardKey(row.lookupName) ||
+		normalizeCardKey(candidate.cardName) === normalizeCardKey(row.cardName)
+	);
 }
 
 function buildCollectionSourceLabel(
@@ -641,12 +668,14 @@ function createInitialDeckRows(cards: ParsedDeckCard[]): DeckRow[] {
 }
 
 function createCardNameCell(
+	app: App,
 	row: DeckRow,
 	cache: CardCache,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
 	onRetry: (cardName: string) => Promise<void>,
-	collectionOwned = 0
+	collectionOwned = 0,
+	ownershipRefs: OwnershipBlockRef[] = []
 ): HTMLTableCellElement {
 	const cell = document.createElement("td");
 	const span = document.createElement("span");
@@ -657,7 +686,14 @@ function createCardNameCell(
 	span.tabIndex = 0;
 	span.setAttribute("role", "button");
 	span.setAttribute("aria-label", `Show Magic card preview for ${row.cardName}`);
-	attachHoverEvents(span, row.cardName, cache, getSettings, popover);
+	attachHoverEvents(
+		span,
+		row.cardName,
+		cache,
+		getSettings,
+		popover,
+		renderOwnershipPopoverSection(app, ownershipRefs)
+	);
 	cell.appendChild(span);
 	if ((row.have ?? 0) === 0 && collectionOwned > 0) {
 		cell.createEl("span", {
@@ -761,6 +797,7 @@ function createHaveCell(
 }
 
 function renderTableRows(
+	app: App,
 	tableBody: HTMLElement,
 	rows: DeckRow[],
 	cache: CardCache,
@@ -771,6 +808,7 @@ function renderTableRows(
 	onTransferOwned: ((row: DeckRow) => void) | null,
 	onTransferAway: ((row: DeckRow, inlineHave: number) => void) | null,
 	collectionTotals: CollectionTotals | null = null,
+	collectionOverview: CollectionOverview | null = null,
 	transfer: DeckTransferContext | null = null
 ): void {
 	let currentSection = "";
@@ -788,6 +826,9 @@ function renderTableRows(
 
 		const owned = getOwnedQuantity(row, collectionTotals);
 		const collectionOwned = getCollectionOwnedQuantity(row, collectionTotals);
+		const ownershipRefs = collectionOverview
+			? buildCollectionOwnershipRefs(row, collectionOverview)
+			: [];
 		const tr = tableBody.createEl("tr", { cls: "mtg-deck-row" });
 		tr.createEl("td", { text: String(row.quantity), cls: "mtg-deck-qty" });
 		tr.appendChild(
@@ -799,7 +840,18 @@ function renderTableRows(
 				onTransferAway
 			)
 		);
-		tr.appendChild(createCardNameCell(row, cache, getSettings, popover, onRetry, collectionOwned));
+		tr.appendChild(
+			createCardNameCell(
+				app,
+				row,
+				cache,
+				getSettings,
+				popover,
+				onRetry,
+				collectionOwned,
+				ownershipRefs
+			)
+		);
 		tr.createEl("td", { text: row.priceText, cls: "mtg-deck-price" });
 		if (transfer) {
 			const actionCell = tr.createEl("td", { cls: "mtg-transfer-cell" });
@@ -897,9 +949,11 @@ function renderUnsupportedDeckFormatWarning(
 }
 
 function renderResolvedDeckContent(
+	app: App,
 	containerEl: HTMLElement,
 	rows: DeckRow[],
 	coverage: DeckCollectionCoverage,
+	collectionOverview: CollectionOverview,
 	analytics: DeckAnalytics,
 	validationIssues: DeckValidationIssue[],
 	deckFormat: DeckFormat | null,
@@ -928,6 +982,7 @@ function renderResolvedDeckContent(
 
 	const tbody = table.createEl("tbody");
 	renderTableRows(
+		app,
 		tbody,
 		rows,
 		cache,
@@ -938,10 +993,11 @@ function renderResolvedDeckContent(
 		onTransferOwned,
 		onTransferAway,
 		coverage.collectionTotals,
+		collectionOverview,
 		transfer
 	);
 	renderTableFooter(table, rows, undefined, coverage.collectionTotals);
-	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
+	renderCollectionCoverageSection(containerEl, coverage, app, cache, getSettings, popover, onRetry);
 	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, rawFormat);
 }
 
@@ -1257,6 +1313,7 @@ function renderDeckAnalyticsSection(
 function renderCollectionCoverageSection(
 	containerEl: HTMLElement,
 	coverage: DeckCollectionCoverage,
+	app: App,
 	cache: CardCache,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
@@ -1322,6 +1379,7 @@ function renderCollectionCoverageSection(
 	for (const row of coverage.rows) {
 		const tr = tbody.createEl("tr");
 		tr.appendChild(createCardNameCell(
+			app,
 			{
 				lookupName: row.lookupName,
 				quantity: row.needed,
@@ -1487,6 +1545,7 @@ export async function renderDeckTable(
 		}
 	};
 	renderTableRows(
+		app,
 		tbody,
 		initialRows,
 		cache,
@@ -1494,6 +1553,7 @@ export async function renderDeckTable(
 		popover,
 		async () => Promise.resolve(),
 		onAdjustHave,
+		null,
 		null,
 		null,
 		null,
@@ -1546,9 +1606,11 @@ export async function renderDeckTable(
 		containerEl.empty();
 		containerEl.removeClass("is-updating");
 		renderResolvedDeckContent(
+			app,
 			containerEl,
 			rows,
 			coverage,
+			collectionOverview,
 			analytics,
 			validationIssues,
 			deckFormat,

@@ -84,6 +84,12 @@
 	border-top: 1px solid var(--background-modifier-border);
 }
 
+.mtg-card-popover-ownership {
+	margin-top: 0.7rem;
+	padding-top: 0.7rem;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
 .mtg-card-popover-section-title {
 	margin: 0 0 0.45rem;
 	color: var(--text-muted);
@@ -92,6 +98,27 @@
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	text-align: left;
+}
+
+.mtg-card-popover-ownership-list {
+	display: grid;
+	gap: 0.35rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.mtg-card-popover-ownership-item {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	font-size: 0.82em;
+}
+
+.mtg-card-popover-ownership-meta {
+	color: var(--text-muted);
+	white-space: nowrap;
 }
 
 .mtg-card-popover-legality-grid {

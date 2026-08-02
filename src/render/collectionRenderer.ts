@@ -2,11 +2,12 @@ import { App } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { ParsedDeckCard, parseCollectionList } from "../parser/deckParser";
 import { MTGSettings } from "../settings";
-import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
+import { attachHoverEvents, MtgPopover, renderOwnershipPopoverSection } from "./cardImageRenderer";
 import { createColorIdentityElement } from "./colorIdentity";
 import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createRateLimitWarning } from "./lookupWarning";
 import { CardTransferModal, createTransferButton, TransferSourceContext } from "../transfer/cardTransfer";
+import { loadOwnershipRefsForCards, OwnershipBlockRef } from "../ownership/cardOwnership";
 
 interface CollectionRow {
 	key: string;
@@ -174,11 +175,13 @@ function adjustRows(
 }
 
 function createCollectionCardCell(
+	app: App | null,
 	row: CollectionRow,
 	cache: CardCache,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
-	onRetry: (cardName: string) => Promise<void>
+	onRetry: (cardName: string) => Promise<void>,
+	ownershipRefs: OwnershipBlockRef[] = []
 ): HTMLTableCellElement {
 	const cell = document.createElement("td");
 	const span = document.createElement("span");
@@ -187,7 +190,14 @@ function createCollectionCardCell(
 	span.tabIndex = 0;
 	span.setAttribute("role", "button");
 	span.setAttribute("aria-label", `Show Magic card preview for ${row.cardName}`);
-	attachHoverEvents(span, row.cardName, cache, getSettings, popover);
+	attachHoverEvents(
+		span,
+		row.cardName,
+		cache,
+		getSettings,
+		popover,
+		app ? renderOwnershipPopoverSection(app, ownershipRefs, "Also owned in") : undefined
+	);
 	cell.appendChild(span);
 	if (row.rateLimitedMessage) {
 		cell.appendChild(createRateLimitWarning(row.rateLimitedMessage, () => onRetry(row.lookupName)));
@@ -248,7 +258,8 @@ function renderCollectionRows(
 	popover: MtgPopover,
 	onAdjust: (key: string, delta: number) => Promise<void>,
 	onRetry: (cardName: string) => Promise<void>,
-	transfer: RenderCollectionTableOptions["transfer"]
+	transfer: RenderCollectionTableOptions["transfer"],
+	ownershipRefsByKey: Map<string, OwnershipBlockRef[]>
 ): void {
 	let currentSection = "";
 	const onTransferAway = transfer
@@ -279,7 +290,15 @@ function renderCollectionRows(
 
 		const tr = tableBody.createEl("tr", { cls: "mtg-collection-row" });
 		tr.appendChild(createQuantityCell(row, onAdjust, onTransferAway));
-		tr.appendChild(createCollectionCardCell(row, cache, getSettings, popover, onRetry));
+		tr.appendChild(createCollectionCardCell(
+			transfer?.app ?? null,
+			row,
+			cache,
+			getSettings,
+			popover,
+			onRetry,
+			ownershipRefsByKey.get(normalizeCardKey(row.lookupName)) ?? []
+		));
 		const colorCell = tr.createEl("td", { cls: "mtg-collection-color" });
 		colorCell.appendChild(createColorIdentityElement(row.colorIdentity));
 		tr.createEl("td", { text: row.priceText, cls: "mtg-collection-price" });
@@ -325,6 +344,18 @@ export async function renderCollectionTable(
 	const renderToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	containerEl.setAttribute(COLLECTION_RENDER_TOKEN_ATTR, renderToken);
 	let rows = createInitialCollectionRows(parsed.cards);
+	const ownershipRefsByKey = transfer
+		? await loadOwnershipRefsForCards(
+			transfer.app,
+			getSettings(),
+			parsed.cards.map((card) => card.cardName),
+			{
+				path: transfer.source.path,
+				lineStart: transfer.source.lineStart,
+				language: "collection",
+			}
+		)
+		: new Map<string, OwnershipBlockRef[]>();
 
 	let isUpdating = false;
 	const onAdjust = async (key: string, delta: number): Promise<void> => {
@@ -385,7 +416,17 @@ export async function renderCollectionTable(
 	}
 
 	const tbody = table.createEl("tbody");
-	renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry, transfer);
+	renderCollectionRows(
+		tbody,
+		rows,
+		cache,
+		getSettings,
+		popover,
+		onAdjust,
+		onRetry,
+		transfer,
+		ownershipRefsByKey
+	);
 
 	void mapCollectionRows(parsed.cards, cache, (completed, total) => {
 		if (
@@ -410,6 +451,16 @@ export async function renderCollectionTable(
 		rows = resolvedRows;
 		loadingEl.remove();
 		tbody.empty();
-		renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry, transfer);
+		renderCollectionRows(
+			tbody,
+			rows,
+			cache,
+			getSettings,
+			popover,
+			onAdjust,
+			onRetry,
+			transfer,
+			ownershipRefsByKey
+		);
 	});
 }

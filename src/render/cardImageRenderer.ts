@@ -1,8 +1,11 @@
+import { App, TFile } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
+import { OwnershipBlockRef } from "../ownership/cardOwnership";
 import { buildCardReferenceRegex } from "../parser/cardReferenceParser";
 import { MTGSettings } from "../settings";
 
 type DisplayLegalityStatus = "legal" | "banned" | "restricted";
+type PopoverExtraRenderer = (container: HTMLElement, result: CardPreviewResult) => void;
 
 const POPOVER_LEGALITY_FORMATS: Array<{ key: string; label: string }> = [
 	{ key: "standard", label: "Standard" },
@@ -102,6 +105,45 @@ function renderLegalitySection(container: HTMLElement, result: CardPreviewResult
 	}
 }
 
+export function renderOwnershipPopoverSection(
+	app: App,
+	ownershipRefs: OwnershipBlockRef[],
+	title = "Owned in"
+): (container: HTMLElement) => void {
+	return (container: HTMLElement): void => {
+		if (ownershipRefs.length === 0) {
+			return;
+		}
+
+		const section = container.createEl("div", { cls: "mtg-card-popover-ownership" });
+		section.createEl("p", {
+			text: title,
+			cls: "mtg-card-popover-section-title",
+		});
+		const list = section.createEl("ul", { cls: "mtg-card-popover-ownership-list" });
+
+		for (const ref of ownershipRefs) {
+			const file = app.vault.getAbstractFileByPath(ref.path);
+			const noteName = file instanceof TFile ? file.basename : ref.path;
+			const item = list.createEl("li", { cls: "mtg-card-popover-ownership-item" });
+			const link = item.createEl("a", {
+				text: noteName,
+				cls: "internal-link",
+				href: "#",
+			});
+			link.addEventListener("click", (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				void app.workspace.openLinkText(ref.path, "", true);
+			});
+			item.createEl("span", {
+				text: `x${ref.quantity}`,
+				cls: "mtg-card-popover-ownership-meta",
+			});
+		}
+	};
+}
+
 export class MtgPopover {
 	private el: HTMLElement;
 	private hideTimer: number | null = null;
@@ -130,7 +172,13 @@ export class MtgPopover {
 		this.position(x, y);
 	}
 
-	showResult(x: number, y: number, result: CardPreviewResult, settings: MTGSettings): void {
+	showResult(
+		x: number,
+		y: number,
+		result: CardPreviewResult,
+		settings: MTGSettings,
+		renderExtra?: PopoverExtraRenderer
+	): void {
 		this.cancelHide();
 		this.el.empty();
 
@@ -148,6 +196,7 @@ export class MtgPopover {
 				});
 			}
 
+			renderExtra?.(this.el, result);
 			renderLegalitySection(this.el, result);
 		} else {
 			this.el.createEl("p", {
@@ -232,7 +281,8 @@ export function attachHoverEvents(
 	cardName: string,
 	cache: CardCache,
 	getSettings: () => MTGSettings,
-	popover: MtgPopover
+	popover: MtgPopover,
+	renderExtra?: PopoverExtraRenderer
 ): void {
 	let requestToken = 0;
 
@@ -246,7 +296,7 @@ export function attachHoverEvents(
 			return;
 		}
 
-		popover.showResult(x, y, result, getSettings());
+		popover.showResult(x, y, result, getSettings(), renderExtra);
 	};
 
 	el.addEventListener("mouseenter", (event: MouseEvent) => {

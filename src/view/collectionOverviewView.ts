@@ -6,16 +6,25 @@ import {
 	CollectionSourceRef,
 } from "../collection/collectionIndex";
 import { sectionSortKey, titleCaseSection } from "../render/cardSections";
-import { attachHoverEvents, MtgPopover } from "../render/cardImageRenderer";
+import {
+	attachHoverEvents,
+	MtgPopover,
+	renderOwnershipPopoverSection,
+} from "../render/cardImageRenderer";
 import { createManaCostElement } from "../render/manaCost";
 import { parseCollectionList } from "../parser/deckParser";
 import { MTGSettings } from "../settings";
 import { CardTransferModal } from "../transfer/cardTransfer";
+import {
+	loadOwnershipRefsForCards,
+	OwnershipBlockRef,
+} from "../ownership/cardOwnership";
 
 export const COLLECTION_OVERVIEW_VIEW_TYPE = "mtg-collection-overview";
 
 interface ResolvedCollectionRow extends CollectionRow {
 	resolvedName: string;
+	ownershipRefs: OwnershipBlockRef[];
 	manaCosts?: string[];
 	manaValue?: number;
 	typeLine?: string;
@@ -313,10 +322,16 @@ function sortHoldings(rows: ResolvedCollectionRow[], sortBy: HoldingsSort): Reso
 }
 
 async function resolveCollectionRows(
+	view: CollectionOverviewView,
 	rows: CollectionRow[],
 	cache: CardCache
 ): Promise<ResolvedCollectionRow[]> {
 	const resolvedMap = await cache.resolveCardsMetadata(rows.map((row) => row.cardName));
+	const ownershipRefsByKey = await loadOwnershipRefsForCards(
+		view.app,
+		view.getSettingsAccessor(),
+		rows.map((row) => row.cardName)
+	);
 	return rows.map((row) => {
 		const resolved =
 			resolvedMap.get(row.key) ?? {
@@ -327,6 +342,7 @@ async function resolveCollectionRows(
 		return {
 			...row,
 			resolvedName: resolved.cardName,
+			ownershipRefs: ownershipRefsByKey.get(row.key) ?? [],
 			manaCosts:
 				resolved.card?.manaCosts ??
 				(resolved.card?.manaCost ? [resolved.card.manaCost] : undefined),
@@ -368,9 +384,10 @@ function renderCollectionLink(view: CollectionOverviewView, containerEl: HTMLEle
 		void view.app.workspace.openLinkText(primaryPath, "", true);
 	});
 
-	if (row.sourcePaths.length > 1) {
+	const additionalSourceCount = Math.max(0, row.ownershipRefs.length - 1);
+	if (additionalSourceCount > 0) {
 		containerEl.createEl("span", {
-			text: ` +${row.sourcePaths.length - 1}`,
+			text: ` +${additionalSourceCount}`,
 			cls: "mtg-overview-link-count",
 		});
 	}
@@ -407,7 +424,14 @@ function renderHoldingsTable(
 		cardSpan.tabIndex = 0;
 		cardSpan.setAttribute("role", "button");
 		cardSpan.setAttribute("aria-label", `Show Magic card preview for ${row.resolvedName}`);
-		attachHoverEvents(cardSpan, row.resolvedName, view.cache, view.getSettingsAccessor, view.popover);
+		attachHoverEvents(
+			cardSpan,
+			row.resolvedName,
+			view.cache,
+			view.getSettingsAccessor,
+			view.popover,
+			renderOwnershipPopoverSection(view.app, row.ownershipRefs)
+		);
 		tr.createEl("td", { text: row.displayType, cls: "mtg-overview-type-cell" });
 		const manaCell = tr.createEl("td", { cls: "mtg-overview-mana-cell" });
 		manaCell.appendChild(createManaCostElement(row.manaCosts));
@@ -620,7 +644,7 @@ export class CollectionOverviewView extends ItemView {
 		});
 
 		const overview = await this.collectionIndex.loadOverview();
-		const resolvedRows = await resolveCollectionRows(overview.rows, this.cache);
+		const resolvedRows = await resolveCollectionRows(this, overview.rows, this.cache);
 		if (!loadingEl.isConnected) {
 			return;
 		}
