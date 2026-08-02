@@ -32,6 +32,7 @@ const SUPPORTED_DECK_FORMAT_LABELS = Array.from(SUPPORTED_DECK_FORMATS.values())
 interface DeckRow {
 	lookupName: string;
 	quantity: number;
+	have?: number;
 	cardName: string;
 	section: string;
 	typeLine?: string;
@@ -63,6 +64,7 @@ interface DeckDeficitRow {
 
 interface DeckCollectionCoverage {
 	collectionTotals: CollectionTotals;
+	usesInlineHave: boolean;
 	sourceFileCount: number;
 	sourceBlockCount: number;
 	coveredQuantity: number;
@@ -363,6 +365,7 @@ async function buildDeckCollectionCoverage(
 	rows: DeckRow[],
 	collection: CollectionTotals
 ): Promise<DeckCollectionCoverage> {
+	const usesInlineHave = rows.some((row) => row.have !== undefined);
 	const rowsWithDeficits: DeckDeficitRow[] = [];
 	let coveredQuantity = 0;
 	let missingQuantity = 0;
@@ -372,7 +375,7 @@ async function buildDeckCollectionCoverage(
 	let hasEstimatedMissingCost = false;
 
 	for (const row of rows) {
-		const owned = collection.quantities.get(normalizeCardKey(row.lookupName)) ?? 0;
+		const owned = getOwnedQuantity(row, collection, usesInlineHave) ?? 0;
 		const covered = Math.min(row.quantity, owned);
 		const missing = Math.max(0, row.quantity - owned);
 
@@ -410,6 +413,7 @@ async function buildDeckCollectionCoverage(
 
 	return {
 		collectionTotals: collection,
+		usesInlineHave,
 		sourceFileCount: collection.sourceFileCount,
 		sourceBlockCount: collection.sourceBlockCount,
 		coveredQuantity,
@@ -452,6 +456,7 @@ async function mapDeckRows(
 			return {
 				lookupName: card.cardName,
 				quantity: card.quantity,
+				have: card.have,
 				cardName: resolved.cardName,
 				section,
 				typeLine: resolved.card?.typeLine,
@@ -477,6 +482,7 @@ function createInitialDeckRows(cards: ParsedDeckCard[]): DeckRow[] {
 		cards.map((card) => ({
 			lookupName: card.cardName,
 			quantity: card.quantity,
+			have: card.have,
 			cardName: card.cardName,
 			section: card.section ? titleCaseSection(card.section) : "Other",
 			typeLine: undefined,
@@ -521,7 +527,19 @@ function createCardNameCell(
 	return cell;
 }
 
-function getOwnedQuantity(row: DeckRow, collectionTotals: CollectionTotals | null): number | null {
+function getOwnedQuantity(
+	row: DeckRow,
+	collectionTotals: CollectionTotals | null,
+	usesInlineHave: boolean
+): number | null {
+	if (row.have !== undefined) {
+		return row.have;
+	}
+
+	if (usesInlineHave) {
+		return 0;
+	}
+
 	if (!collectionTotals) {
 		return null;
 	}
@@ -536,7 +554,8 @@ function renderTableRows(
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
 	onRetry: (cardName: string) => Promise<void>,
-	collectionTotals: CollectionTotals | null = null
+	collectionTotals: CollectionTotals | null = null,
+	usesInlineHave = false
 ): void {
 	let currentSection = "";
 
@@ -551,7 +570,7 @@ function renderTableRows(
 			sectionCell.colSpan = 4;
 		}
 
-		const owned = getOwnedQuantity(row, collectionTotals);
+		const owned = getOwnedQuantity(row, collectionTotals, usesInlineHave);
 		const tr = tableBody.createEl("tr");
 		tr.createEl("td", { text: String(row.quantity), cls: "mtg-deck-qty" });
 		tr.createEl("td", { text: owned === null ? "..." : String(owned), cls: "mtg-deck-qty" });
@@ -578,13 +597,17 @@ function calculateTotals(rows: DeckRow[]): DeckTotals {
 	return { totalQuantity, totalPrice, hasEstimatedPrices };
 }
 
-function calculateCoveredQuantity(rows: DeckRow[], collectionTotals: CollectionTotals | null): number | null {
-	if (!collectionTotals) {
+function calculateCoveredQuantity(
+	rows: DeckRow[],
+	collectionTotals: CollectionTotals | null,
+	usesInlineHave: boolean
+): number | null {
+	if (!collectionTotals && !usesInlineHave) {
 		return null;
 	}
 
 	return rows.reduce((sum, row) => {
-		const owned = getOwnedQuantity(row, collectionTotals) ?? 0;
+		const owned = getOwnedQuantity(row, collectionTotals, usesInlineHave) ?? 0;
 		return sum + Math.min(row.quantity, owned);
 	}, 0);
 }
@@ -593,10 +616,11 @@ function renderTableFooter(
 	table: HTMLElement,
 	rows: DeckRow[],
 	totalTextOverride?: string,
-	collectionTotals: CollectionTotals | null = null
+	collectionTotals: CollectionTotals | null = null,
+	usesInlineHave = false
 ): void {
 	const totals = calculateTotals(rows);
-	const coveredQuantity = calculateCoveredQuantity(rows, collectionTotals);
+	const coveredQuantity = calculateCoveredQuantity(rows, collectionTotals, usesInlineHave);
 	const tfoot = table.createEl("tfoot");
 	const footerRow = tfoot.createEl("tr", { cls: "mtg-deck-footer-row" });
 	footerRow.createEl("td", {
@@ -663,8 +687,17 @@ function renderResolvedDeckContent(
 	headRow.createEl("th", { text: "Current price" });
 
 	const tbody = table.createEl("tbody");
-	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry, coverage.collectionTotals);
-	renderTableFooter(table, rows, undefined, coverage.collectionTotals);
+	renderTableRows(
+		tbody,
+		rows,
+		cache,
+		getSettings,
+		popover,
+		onRetry,
+		coverage.collectionTotals,
+		coverage.usesInlineHave
+	);
+	renderTableFooter(table, rows, undefined, coverage.collectionTotals, coverage.usesInlineHave);
 	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
 	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, rawFormat);
 }
@@ -993,8 +1026,9 @@ function renderCollectionCoverageSection(
 	);
 	const collectionFolder = getSettings().collectionFolder.trim() || "the vault";
 
-	const sourceSummary =
-		coverage.sourceBlockCount === 0
+	const sourceSummary = coverage.usesInlineHave
+		? "Using this deck's inline have values."
+		: coverage.sourceBlockCount === 0
 			? `No collection blocks found in ${collectionFolder}.`
 			: `Using ${coverage.sourceBlockCount} collection block${coverage.sourceBlockCount === 1 ? "" : "s"} across ${coverage.sourceFileCount} note${coverage.sourceFileCount === 1 ? "" : "s"}.`;
 	section.createEl("p", {
@@ -1002,7 +1036,7 @@ function renderCollectionCoverageSection(
 		cls: "mtg-deck-deficit-meta",
 	});
 
-	if (coverage.sourceBlockCount === 0) {
+	if (!coverage.usesInlineHave && coverage.sourceBlockCount === 0) {
 		section.createEl("p", {
 			text: "Add one or more collection blocks in the configured collection folder to compare this deck against your inventory.",
 			cls: "mtg-card-popover-message",
@@ -1138,8 +1172,18 @@ export async function renderDeckTable(
 			containerEl.removeClass("is-updating");
 		}
 	};
-	renderTableRows(tbody, initialRows, cache, getSettings, popover, async () => Promise.resolve());
-	renderTableFooter(table, initialRows, "Loading…");
+	const usesInlineHave = initialRows.some((row) => row.have !== undefined);
+	renderTableRows(
+		tbody,
+		initialRows,
+		cache,
+		getSettings,
+		popover,
+		async () => Promise.resolve(),
+		null,
+		usesInlineHave
+	);
+	renderTableFooter(table, initialRows, "Loading…", null, usesInlineHave);
 
 	const metadataLoadingEl = containerEl.createEl("p", {
 		text: `Loading deck metadata 0/${parsed.cards.length}…`,
