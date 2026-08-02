@@ -7,6 +7,7 @@ export interface ParsedDeckCard {
 
 export interface ParsedDeck {
 	cards: ParsedDeckCard[];
+	name?: string;
 	format?: string;
 }
 
@@ -146,6 +147,15 @@ function parseFormatLine(line: string): string | null {
 	return match[1].trim().toLowerCase();
 }
 
+function parseNameLine(line: string): string | null {
+	const match = /^name\s*:\s*(.+?)\s*$/i.exec(line);
+	if (!match?.[1]) {
+		return null;
+	}
+
+	return match[1].trim();
+}
+
 function parseCommanderLine(line: string, parseInlineHave: boolean): ParsedDeckCard | null {
 	const match = /^commander\s*:\s*(.+?)\s*$/i.exec(line);
 	if (!match?.[1]) {
@@ -175,6 +185,7 @@ function parseCardList(
 	let currentSection: string | undefined;
 	let currentSectionIsTransient = false;
 	let parsedCardsInCurrentSection = 0;
+	let name: string | undefined;
 	let format: string | undefined;
 
 	for (const rawLine of source.split(/\r?\n/)) {
@@ -185,6 +196,12 @@ function parseCardList(
 				currentSectionIsTransient = false;
 				parsedCardsInCurrentSection = 0;
 			}
+			continue;
+		}
+
+		const parsedName = parseNameLine(line);
+		if (parsedName) {
+			name = parsedName;
 			continue;
 		}
 
@@ -243,6 +260,7 @@ function parseCardList(
 
 	return {
 		cards: Array.from(cards.values()),
+		name,
 		format,
 	};
 }

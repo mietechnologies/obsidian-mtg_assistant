@@ -1,4 +1,5 @@
 import { App, Modal, Notice, setIcon, TFile } from "obsidian";
+import { parseCollectionList, parseDeckList } from "../parser/deckParser";
 import { MTGSettings } from "../settings";
 
 export type TransferBlockLanguage = "deck" | "collection";
@@ -103,9 +104,22 @@ function replaceBlockSource(
 	lines.splice(block.startLine, block.endLine - block.startLine + 1, ...nextBlockLines);
 }
 
-function buildTargetLabel(block: TransferBlockRef): string {
-	const kind = block.language === "deck" ? "Deck" : "Collection";
-	return `${kind} block at line ${block.lineStart + 1}`;
+function parseBlockName(block: TransferBlockRef, settings: MTGSettings): string | undefined {
+	const parsed = block.language === "deck"
+		? parseDeckList(block.source, settings.commanderMarker)
+		: parseCollectionList(block.source);
+	return parsed.name;
+}
+
+function buildTargetLabel(file: TFile, block: TransferBlockRef, settings: MTGSettings): string {
+	const kind = block.language === "deck" ? "deck" : "collection";
+	const line = block.lineStart + 1;
+	const name = parseBlockName(block, settings);
+	if (name) {
+		return name;
+	}
+
+	return `${file.basename} - ${kind} at line ${line}`;
 }
 
 async function listTransferBlocks(
@@ -149,7 +163,7 @@ async function listTransferBlocks(
 
 				blocks.push({
 					...block,
-					label: buildTargetLabel(block),
+					label: buildTargetLabel(file, block, settings),
 				});
 			}
 		}
@@ -365,7 +379,6 @@ async function applyTransfer(
 
 export class CardTransferModal extends Modal {
 	private targets: TransferTargetBlock[] = [];
-	private noteSelect!: HTMLSelectElement;
 	private blockSelect!: HTMLSelectElement;
 	private quantityInput!: HTMLInputElement;
 	private applyButton!: HTMLButtonElement;
@@ -394,8 +407,7 @@ export class CardTransferModal extends Modal {
 		});
 		sourceMeta.setAttribute("data-language", this.row.source.language);
 
-		this.noteSelect = this.createLabeledSelect(contentEl, "Destination note");
-		this.blockSelect = this.createLabeledSelect(contentEl, "Destination block");
+		this.blockSelect = this.createLabeledSelect(contentEl, "Destination deck or collection");
 
 		const quantityLabel = contentEl.createEl("label", { cls: "mtg-transfer-field" });
 		quantityLabel.createEl("span", { text: "Quantity" });
@@ -420,7 +432,6 @@ export class CardTransferModal extends Modal {
 		cancelButton.type = "button";
 		cancelButton.addEventListener("click", () => this.close());
 
-		this.noteSelect.addEventListener("change", () => this.renderBlockOptions());
 		this.blockSelect.addEventListener("change", () => this.updateApplyState());
 		this.quantityInput.addEventListener("input", () => this.updateApplyState());
 
@@ -435,33 +446,19 @@ export class CardTransferModal extends Modal {
 
 	private async loadTargets(): Promise<void> {
 		this.targets = await listTransferBlocks(this.app, this.settings, this.row.source);
-		const paths = Array.from(new Set(this.targets.map((target) => target.path))).sort();
-		this.noteSelect.empty();
-
-		if (paths.length === 0) {
-			this.noteSelect.createEl("option", { text: "No destination notes found", value: "" });
-			this.renderBlockOptions();
-			return;
-		}
-
-		for (const path of paths) {
-			this.noteSelect.createEl("option", { text: path, value: path });
-		}
 		this.renderBlockOptions();
 	}
 
 	private renderBlockOptions(): void {
-		const selectedPath = this.noteSelect.value;
-		const blocks = this.targets.filter((target) => target.path === selectedPath);
 		this.blockSelect.empty();
 
-		if (blocks.length === 0) {
-			this.blockSelect.createEl("option", { text: "No destination blocks found", value: "" });
+		if (this.targets.length === 0) {
+			this.blockSelect.createEl("option", { text: "No destination decks or collections found", value: "" });
 			this.updateApplyState();
 			return;
 		}
 
-		for (const block of blocks) {
+		for (const block of this.targets) {
 			this.blockSelect.createEl("option", {
 				text: block.label,
 				value: `${block.path}\u0000${block.lineStart}\u0000${block.language}`,
