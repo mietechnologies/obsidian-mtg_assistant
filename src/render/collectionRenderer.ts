@@ -1,3 +1,4 @@
+import { App } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { ParsedDeckCard, parseCollectionList } from "../parser/deckParser";
 import { MTGSettings } from "../settings";
@@ -5,6 +6,7 @@ import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { createColorIdentityElement } from "./colorIdentity";
 import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createRateLimitWarning } from "./lookupWarning";
+import { createTransferButton, TransferSourceContext } from "../transfer/cardTransfer";
 
 interface CollectionRow {
 	key: string;
@@ -26,6 +28,10 @@ interface RenderCollectionTableOptions {
 	popover: MtgPopover;
 	onUpdateSource: (nextSource: string) => void | Promise<void>;
 	onActivateEditor?: () => void;
+	transfer?: {
+		app: App;
+		source: TransferSourceContext;
+	};
 }
 
 const COLLECTION_RENDER_TOKEN_ATTR = "data-mtg-collection-render-token";
@@ -236,7 +242,8 @@ function renderCollectionRows(
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
 	onAdjust: (key: string, delta: number) => Promise<void>,
-	onRetry: (cardName: string) => Promise<void>
+	onRetry: (cardName: string) => Promise<void>,
+	transfer: RenderCollectionTableOptions["transfer"]
 ): void {
 	let currentSection = "";
 
@@ -248,7 +255,7 @@ function renderCollectionRows(
 				text: currentSection,
 				cls: "mtg-collection-section-cell",
 			});
-			sectionCell.colSpan = 4;
+			sectionCell.colSpan = transfer ? 5 : 4;
 		}
 
 		const tr = tableBody.createEl("tr", { cls: "mtg-collection-row" });
@@ -257,13 +264,32 @@ function renderCollectionRows(
 		const colorCell = tr.createEl("td", { cls: "mtg-collection-color" });
 		colorCell.appendChild(createColorIdentityElement(row.colorIdentity));
 		tr.createEl("td", { text: row.priceText, cls: "mtg-collection-price" });
+		if (transfer) {
+			const actionCell = tr.createEl("td", { cls: "mtg-transfer-cell" });
+			actionCell.appendChild(
+				createTransferButton(transfer.app, getSettings(), {
+					source: transfer.source,
+					cardName: row.cardName,
+					availableQuantity: row.quantity,
+				})
+			);
+		}
 	}
 }
 
 export async function renderCollectionTable(
 	options: RenderCollectionTableOptions
 ): Promise<void> {
-	const { containerEl, source, cache, getSettings, popover, onUpdateSource, onActivateEditor } = options;
+	const {
+		containerEl,
+		source,
+		cache,
+		getSettings,
+		popover,
+		onUpdateSource,
+		onActivateEditor,
+		transfer,
+	} = options;
 	containerEl.empty();
 	containerEl.addClass("mtg-collection-block");
 
@@ -334,10 +360,13 @@ export async function renderCollectionTable(
 	headRow.createEl("th", { text: "Qty" });
 	headRow.createEl("th", { text: "Card" });
 	headRow.createEl("th", { text: "Color" });
-	headRow.createEl("th", { text: "Current price" });
+	headRow.createEl("th", { text: "Current price", cls: "mtg-collection-price" });
+	if (transfer) {
+		headRow.createEl("th", { cls: "mtg-transfer-header" });
+	}
 
 	const tbody = table.createEl("tbody");
-	renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry);
+	renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry, transfer);
 
 	void mapCollectionRows(parsed.cards, cache, (completed, total) => {
 		if (
@@ -362,6 +391,6 @@ export async function renderCollectionTable(
 		rows = resolvedRows;
 		loadingEl.remove();
 		tbody.empty();
-		renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry);
+		renderCollectionRows(tbody, rows, cache, getSettings, popover, onAdjust, onRetry, transfer);
 	});
 }

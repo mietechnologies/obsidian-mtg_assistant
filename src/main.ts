@@ -52,7 +52,7 @@ export default class MtgAssistantPlugin extends Plugin {
 			)
 		);
 		this.editorExtensions.push(
-			buildCollectionEditorExtension(this.cache, () => this.settings, this.popover)
+			buildCollectionEditorExtension(this.app, this.cache, () => this.settings, this.popover)
 		);
 		this.registerEditorExtension(this.editorExtensions);
 		this.registerView(
@@ -130,6 +130,8 @@ export default class MtgAssistantPlugin extends Plugin {
 			if (!(preEl instanceof HTMLPreElement) || !preEl.parentElement) continue;
 
 			if (classes.includes(`language-${this.settings.deckCodeBlockLanguage}`)) {
+				const sectionInfo = ctx.getSectionInfo(preEl);
+				const sourcePath = ctx.sourcePath;
 				const container = document.createElement("div");
 				preEl.replaceWith(container);
 				await renderDeckTable(
@@ -139,7 +141,22 @@ export default class MtgAssistantPlugin extends Plugin {
 					this.cache,
 					this.collectionIndex,
 					() => this.settings,
-					this.popover
+					this.popover,
+					sectionInfo
+						? {
+							app: this.app,
+							source: {
+								path: sourcePath,
+								lineStart: sectionInfo.lineStart,
+								language: "deck",
+								source: codeEl.textContent ?? "",
+								onTransferComplete: () => {
+									this.collectionIndex.invalidate();
+									this.refreshViews();
+								},
+							},
+						}
+						: null
 				);
 				continue;
 			}
@@ -163,6 +180,21 @@ export default class MtgAssistantPlugin extends Plugin {
 							nextSource
 						);
 					},
+					transfer: sectionInfo
+						? {
+							app: this.app,
+							source: {
+								path: sourcePath,
+								lineStart: sectionInfo.lineStart,
+								language: "collection",
+								source: codeEl.textContent ?? "",
+								onTransferComplete: () => {
+									this.collectionIndex.invalidate();
+									this.refreshViews();
+								},
+							},
+						}
+						: undefined,
 				});
 			}
 		}

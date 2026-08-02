@@ -40,6 +40,8 @@ class MtgDeckWidget extends WidgetType {
 	toDOM(view: EditorView): HTMLElement {
 		const container = document.createElement("div");
 		container.className = "mtg-deck-widget";
+		const activeFile = this.app.workspace.getActiveFile();
+		const lineStart = view.state.doc.lineAt(this.blockStart).number - 1;
 		container.addEventListener("click", (event) => {
 			if (isDeckWidgetInteractiveEvent(event)) {
 				return;
@@ -57,7 +59,21 @@ class MtgDeckWidget extends WidgetType {
 			this.cache,
 			this.collectionIndex,
 			this.getSettings,
-			this.popover
+			this.popover,
+			activeFile
+				? {
+					app: this.app,
+					source: {
+						path: activeFile.path,
+						lineStart,
+						language: "deck",
+						source: this.source,
+						onTransferComplete: () => {
+							this.collectionIndex.invalidate();
+						},
+					},
+				}
+				: null
 		);
 		return container;
 	}

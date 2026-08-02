@@ -9,6 +9,7 @@ import { MTGSettings } from "../settings";
 import { inferSection, normalizeSectionName, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createColorIdentityElement } from "./colorIdentity";
 import { createInlineWarning, createRateLimitWarning } from "./lookupWarning";
+import { createTransferButton, TransferSourceContext } from "../transfer/cardTransfer";
 
 type DeckFormat = "standard" | "pioneer" | "modern" | "pauper" | "commander" | "brawl" | "duel" | "oathbreaker" | "legacy" | "vintage";
 type DeckLegalityStatus = "legal" | "not_legal" | "banned" | "restricted" | null;
@@ -103,6 +104,11 @@ interface DeckAnalytics {
 interface DeckValidationIssue {
 	severity: "error" | "warning";
 	message: string;
+}
+
+interface DeckTransferContext {
+	app: App;
+	source: TransferSourceContext;
 }
 
 const DECK_RENDER_TOKEN_ATTR = "data-mtg-deck-render-token";
@@ -549,7 +555,8 @@ function renderTableRows(
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
 	onRetry: (cardName: string) => Promise<void>,
-	collectionTotals: CollectionTotals | null = null
+	collectionTotals: CollectionTotals | null = null,
+	transfer: DeckTransferContext | null = null
 ): void {
 	let currentSection = "";
 
@@ -561,7 +568,7 @@ function renderTableRows(
 				text: currentSection,
 				cls: "mtg-deck-section-cell",
 			});
-			sectionCell.colSpan = 4;
+			sectionCell.colSpan = transfer ? 5 : 4;
 		}
 
 		const owned = getOwnedQuantity(row, collectionTotals);
@@ -570,6 +577,16 @@ function renderTableRows(
 		tr.createEl("td", { text: owned === null ? "..." : String(owned), cls: "mtg-deck-qty" });
 		tr.appendChild(createCardNameCell(row, cache, getSettings, popover, onRetry));
 		tr.createEl("td", { text: row.priceText, cls: "mtg-deck-price" });
+		if (transfer) {
+			const actionCell = tr.createEl("td", { cls: "mtg-transfer-cell" });
+			actionCell.appendChild(
+				createTransferButton(transfer.app, getSettings(), {
+					source: transfer.source,
+					cardName: row.cardName,
+					availableQuantity: row.have ?? 0,
+				})
+			);
+		}
 	}
 }
 
@@ -666,7 +683,8 @@ function renderResolvedDeckContent(
 	cache: CardCache,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
-	onRetry: (cardName: string) => Promise<void>
+	onRetry: (cardName: string) => Promise<void>,
+	transfer: DeckTransferContext | null
 ): void {
 	renderUnsupportedDeckFormatWarning(containerEl, rawFormat, deckFormat);
 
@@ -676,7 +694,10 @@ function renderResolvedDeckContent(
 	headRow.createEl("th", { text: "Need", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Have", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Card" });
-	headRow.createEl("th", { text: "Current price" });
+	headRow.createEl("th", { text: "Current price", cls: "mtg-deck-price" });
+	if (transfer) {
+		headRow.createEl("th", { cls: "mtg-transfer-header" });
+	}
 
 	const tbody = table.createEl("tbody");
 	renderTableRows(
@@ -686,7 +707,8 @@ function renderResolvedDeckContent(
 		getSettings,
 		popover,
 		onRetry,
-		coverage.collectionTotals
+		coverage.collectionTotals,
+		transfer
 	);
 	renderTableFooter(table, rows, undefined, coverage.collectionTotals);
 	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
@@ -1120,7 +1142,8 @@ export async function renderDeckTable(
 	cache: CardCache,
 	collectionIndex: CollectionIndex,
 	getSettings: () => MTGSettings,
-	popover: MtgPopover
+	popover: MtgPopover,
+	transfer: DeckTransferContext | null = null
 ): Promise<void> {
 	containerEl.empty();
 	containerEl.addClass("mtg-deck-block");
@@ -1149,7 +1172,10 @@ export async function renderDeckTable(
 	headRow.createEl("th", { text: "Need", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Have", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Card" });
-	headRow.createEl("th", { text: "Current price" });
+	headRow.createEl("th", { text: "Current price", cls: "mtg-deck-price" });
+	if (transfer) {
+		headRow.createEl("th", { cls: "mtg-transfer-header" });
+	}
 
 	const tbody = table.createEl("tbody");
 	const onRetry = async (cardName: string): Promise<void> => {
@@ -1163,7 +1189,8 @@ export async function renderDeckTable(
 				cache,
 				collectionIndex,
 				getSettings,
-				popover
+				popover,
+				transfer
 			);
 		} finally {
 			containerEl.removeClass("is-updating");
@@ -1176,7 +1203,8 @@ export async function renderDeckTable(
 		getSettings,
 		popover,
 		async () => Promise.resolve(),
-		null
+		null,
+		transfer
 	);
 	renderTableFooter(table, initialRows, "Loading…", null);
 
@@ -1230,7 +1258,8 @@ export async function renderDeckTable(
 			cache,
 			getSettings,
 			popover,
-			onRetry
+			onRetry,
+			transfer
 		);
 	});
 }

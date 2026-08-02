@@ -156,7 +156,8 @@
 }
 
 .mtg-deck-table th:last-child,
-.mtg-deck-table td:last-child {
+.mtg-deck-table td:last-child,
+.mtg-deck-price {
 	text-align: right;
 }
 
@@ -180,6 +181,62 @@
 .mtg-deck-price {
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
+}
+
+.mtg-transfer-header,
+.mtg-transfer-cell {
+	width: 2.75rem;
+	min-width: 2.75rem;
+	text-align: center !important;
+}
+
+.mtg-transfer-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.8rem;
+	height: 1.8rem;
+	padding: 0;
+	border-radius: 6px;
+}
+
+.mtg-transfer-button svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.mtg-transfer-modal {
+	display: grid;
+	gap: 0.85rem;
+}
+
+.mtg-transfer-card-name {
+	margin: 0;
+	font-weight: 700;
+}
+
+.mtg-transfer-meta {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+.mtg-transfer-field {
+	display: grid;
+	gap: 0.35rem;
+}
+
+.mtg-transfer-field span {
+	color: var(--text-muted);
+	font-size: 0.85em;
+	font-weight: 600;
+}
+
+.mtg-transfer-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	margin-top: 0.25rem;
 }
 
 .mtg-deck-validation-message {
@@ -727,7 +784,8 @@
 }
 
 .mtg-collection-table th:last-child,
-.mtg-collection-table td:last-child {
+.mtg-collection-table td:last-child,
+.mtg-collection-price {
 	text-align: right;
 }
 

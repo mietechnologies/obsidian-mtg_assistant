@@ -1,3 +1,4 @@
+import { App } from "obsidian";
 import { EditorState, Extension, Prec, RangeSetBuilder, StateField } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { CardCache } from "../cache/cardCache";
@@ -14,8 +15,17 @@ function buildCollectionBlockText(language: string, source: string): string {
 	return `\`\`\`${language}\n${source}\n\`\`\``;
 }
 
+function isCollectionWidgetInteractiveEvent(event: Event): boolean {
+	const target = event.target;
+	return (
+		target instanceof HTMLElement &&
+		Boolean(target.closest("button, .mtg-card-ref, details, summary, a, input, select"))
+	);
+}
+
 class MtgCollectionWidget extends WidgetType {
 	constructor(
+		private readonly app: App,
 		private readonly source: string,
 		private readonly blockStart: number,
 		private readonly blockEnd: number,
@@ -37,6 +47,8 @@ class MtgCollectionWidget extends WidgetType {
 	toDOM(view: EditorView): HTMLElement {
 		const container = document.createElement("div");
 		container.className = "mtg-collection-widget";
+		const activeFile = this.app.workspace.getActiveFile();
+		const lineStart = view.state.doc.lineAt(this.blockStart).number - 1;
 
 		const activateEditor = (): void => {
 			view.dispatch({
@@ -68,18 +80,30 @@ class MtgCollectionWidget extends WidgetType {
 			popover: this.popover,
 			onUpdateSource: updateSource,
 			onActivateEditor: activateEditor,
+			transfer: activeFile
+				? {
+					app: this.app,
+					source: {
+						path: activeFile.path,
+						lineStart,
+						language: "collection",
+						source: this.source,
+					},
+				}
+				: undefined,
 		});
 
 		return container;
 	}
 
-	ignoreEvent(): boolean {
-		return false;
+	ignoreEvent(event: Event): boolean {
+		return isCollectionWidgetInteractiveEvent(event);
 	}
 }
 
 function buildDecorations(
 	state: EditorState,
+	app: App,
 	cache: CardCache,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover
@@ -109,6 +133,7 @@ function buildDecorations(
 			Decoration.replace({
 				block: true,
 				widget: new MtgCollectionWidget(
+					app,
 					match[2] ?? "",
 					blockStart,
 					blockEnd,
@@ -124,16 +149,17 @@ function buildDecorations(
 }
 
 export function buildCollectionEditorExtension(
+	app: App,
 	cache: CardCache,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover
 ): Extension {
 	const field = StateField.define<DecorationSet>({
 		create(state) {
-			return buildDecorations(state, cache, getSettings, popover);
+			return buildDecorations(state, app, cache, getSettings, popover);
 		},
 		update(_value, transaction) {
-			return buildDecorations(transaction.state, cache, getSettings, popover);
+			return buildDecorations(transaction.state, app, cache, getSettings, popover);
 		},
 		provide: (stateField) => EditorView.decorations.from(stateField),
 	});
