@@ -12,6 +12,14 @@ function buildDeckBlockRegex(language: string): RegExp {
 	return new RegExp("(^|\\n)```" + escaped + "\\n([\\s\\S]*?)\\n```(?=\\n|$)", "g");
 }
 
+function isDeckWidgetInteractiveEvent(event: Event): boolean {
+	const target = event.target;
+	return (
+		target instanceof HTMLElement &&
+		Boolean(target.closest("button, .mtg-card-ref, details, summary, a, input, select"))
+	);
+}
+
 class MtgDeckWidget extends WidgetType {
 	constructor(
 		private readonly app: App,
@@ -33,11 +41,7 @@ class MtgDeckWidget extends WidgetType {
 		const container = document.createElement("div");
 		container.className = "mtg-deck-widget";
 		container.addEventListener("click", (event) => {
-			const target = event.target;
-			if (
-				target instanceof HTMLElement &&
-				target.closest("button, .mtg-card-ref, details, summary, a, input, select")
-			) {
+			if (isDeckWidgetInteractiveEvent(event)) {
 				return;
 			}
 			view.dispatch({
@@ -58,8 +62,8 @@ class MtgDeckWidget extends WidgetType {
 		return container;
 	}
 
-	ignoreEvent(): boolean {
-		return false;
+	ignoreEvent(event: Event): boolean {
+		return isDeckWidgetInteractiveEvent(event);
 	}
 }
 

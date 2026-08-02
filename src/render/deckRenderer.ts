@@ -1,6 +1,7 @@
 import { App } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { CollectionIndex } from "../collection/collectionIndex";
+import type { CollectionTotals } from "../collection/collectionIndex";
 import tcgPlayerSvg from "../img/tcg_player.svg";
 import { ParsedDeckCard, parseDeckList } from "../parser/deckParser";
 import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
@@ -61,6 +62,7 @@ interface DeckDeficitRow {
 }
 
 interface DeckCollectionCoverage {
+	collectionTotals: CollectionTotals;
 	sourceFileCount: number;
 	sourceBlockCount: number;
 	coveredQuantity: number;
@@ -306,6 +308,10 @@ function createSvgElement(svgMarkup: string): SVGElement | null {
 	return svg instanceof SVGElement ? svg : null;
 }
 
+function formatTcgPlayerMassEntryCardName(cardName: string): string {
+	return cardName.split(/\s+\/\/\s+/, 1)[0]?.trim() || cardName.trim();
+}
+
 function buildTcgPlayerMassEntryUrl(rows: DeckDeficitRow[]): string | null {
 	if (rows.length === 0) {
 		return null;
@@ -313,7 +319,7 @@ function buildTcgPlayerMassEntryUrl(rows: DeckDeficitRow[]): string | null {
 
 	const content = rows
 		.filter((row) => row.missing > 0)
-		.map((row) => `${row.missing} ${row.cardName}`)
+		.map((row) => `${row.missing} ${formatTcgPlayerMassEntryCardName(row.cardName)}`)
 		.join("||");
 
 	if (!content) {
@@ -355,13 +361,8 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 
 async function buildDeckCollectionCoverage(
 	rows: DeckRow[],
-	collectionTotalsPromise: Promise<{
-		quantities: Map<string, number>;
-		sourceFileCount: number;
-		sourceBlockCount: number;
-	}>
+	collection: CollectionTotals
 ): Promise<DeckCollectionCoverage> {
-	const collection = await collectionTotalsPromise;
 	const rowsWithDeficits: DeckDeficitRow[] = [];
 	let coveredQuantity = 0;
 	let missingQuantity = 0;
@@ -408,6 +409,7 @@ async function buildDeckCollectionCoverage(
 	});
 
 	return {
+		collectionTotals: collection,
 		sourceFileCount: collection.sourceFileCount,
 		sourceBlockCount: collection.sourceBlockCount,
 		coveredQuantity,
@@ -519,13 +521,22 @@ function createCardNameCell(
 	return cell;
 }
 
+function getOwnedQuantity(row: DeckRow, collectionTotals: CollectionTotals | null): number | null {
+	if (!collectionTotals) {
+		return null;
+	}
+
+	return collectionTotals.quantities.get(normalizeCardKey(row.lookupName)) ?? 0;
+}
+
 function renderTableRows(
 	tableBody: HTMLElement,
 	rows: DeckRow[],
 	cache: CardCache,
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
-	onRetry: (cardName: string) => Promise<void>
+	onRetry: (cardName: string) => Promise<void>,
+	collectionTotals: CollectionTotals | null = null
 ): void {
 	let currentSection = "";
 
@@ -537,11 +548,13 @@ function renderTableRows(
 				text: currentSection,
 				cls: "mtg-deck-section-cell",
 			});
-			sectionCell.colSpan = 3;
+			sectionCell.colSpan = 4;
 		}
 
+		const owned = getOwnedQuantity(row, collectionTotals);
 		const tr = tableBody.createEl("tr");
 		tr.createEl("td", { text: String(row.quantity), cls: "mtg-deck-qty" });
+		tr.createEl("td", { text: owned === null ? "..." : String(owned), cls: "mtg-deck-qty" });
 		tr.appendChild(createCardNameCell(row, cache, getSettings, popover, onRetry));
 		tr.createEl("td", { text: row.priceText, cls: "mtg-deck-price" });
 	}
@@ -565,12 +578,33 @@ function calculateTotals(rows: DeckRow[]): DeckTotals {
 	return { totalQuantity, totalPrice, hasEstimatedPrices };
 }
 
-function renderTableFooter(table: HTMLElement, rows: DeckRow[], totalTextOverride?: string): void {
+function calculateCoveredQuantity(rows: DeckRow[], collectionTotals: CollectionTotals | null): number | null {
+	if (!collectionTotals) {
+		return null;
+	}
+
+	return rows.reduce((sum, row) => {
+		const owned = getOwnedQuantity(row, collectionTotals) ?? 0;
+		return sum + Math.min(row.quantity, owned);
+	}, 0);
+}
+
+function renderTableFooter(
+	table: HTMLElement,
+	rows: DeckRow[],
+	totalTextOverride?: string,
+	collectionTotals: CollectionTotals | null = null
+): void {
 	const totals = calculateTotals(rows);
+	const coveredQuantity = calculateCoveredQuantity(rows, collectionTotals);
 	const tfoot = table.createEl("tfoot");
 	const footerRow = tfoot.createEl("tr", { cls: "mtg-deck-footer-row" });
 	footerRow.createEl("td", {
 		text: String(totals.totalQuantity),
+		cls: "mtg-deck-qty mtg-deck-footer-cell",
+	});
+	footerRow.createEl("td", {
+		text: coveredQuantity === null ? "..." : String(coveredQuantity),
 		cls: "mtg-deck-qty mtg-deck-footer-cell",
 	});
 	footerRow.createEl("td", {
@@ -623,13 +657,14 @@ function renderResolvedDeckContent(
 	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
-	headRow.createEl("th", { text: "Qty" });
+	headRow.createEl("th", { text: "Need", cls: "mtg-deck-qty" });
+	headRow.createEl("th", { text: "Have", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Card" });
 	headRow.createEl("th", { text: "Current price" });
 
 	const tbody = table.createEl("tbody");
-	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry);
-	renderTableFooter(table, rows);
+	renderTableRows(tbody, rows, cache, getSettings, popover, onRetry, coverage.collectionTotals);
+	renderTableFooter(table, rows, undefined, coverage.collectionTotals);
 	renderCollectionCoverageSection(containerEl, coverage, cache, getSettings, popover, onRetry);
 	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, rawFormat);
 }
@@ -998,8 +1033,6 @@ function renderCollectionCoverageSection(
 	const headRow = thead.createEl("tr");
 	headRow.createEl("th", { text: "Card" });
 	headRow.createEl("th", { text: "Need" });
-	headRow.createEl("th", { text: "Owned" });
-	headRow.createEl("th", { text: "Missing" });
 	headRow.createEl("th", { text: "Estimated cost" });
 
 	const tbody = table.createEl("tbody");
@@ -1024,8 +1057,6 @@ function renderCollectionCoverageSection(
 			onRetry
 		));
 		tr.createEl("td", { text: String(row.needed), cls: "mtg-deck-deficit-qty" });
-		tr.createEl("td", { text: String(row.owned), cls: "mtg-deck-deficit-qty" });
-		tr.createEl("td", { text: String(row.missing), cls: "mtg-deck-deficit-qty" });
 		tr.createEl("td", { text: row.missingCostText, cls: "mtg-deck-price" });
 	}
 
@@ -1033,14 +1064,6 @@ function renderCollectionCoverageSection(
 	const footerRow = tfoot.createEl("tr", { cls: "mtg-deck-deficit-footer-row" });
 	footerRow.createEl("td", {
 		text: "Total missing cost",
-		cls: "mtg-deck-deficit-footer-cell",
-	});
-	footerRow.createEl("td", {
-		text: "",
-		cls: "mtg-deck-deficit-footer-cell",
-	});
-	footerRow.createEl("td", {
-		text: "",
 		cls: "mtg-deck-deficit-footer-cell",
 	});
 	footerRow.createEl("td", {
@@ -1092,7 +1115,8 @@ export async function renderDeckTable(
 	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
-	headRow.createEl("th", { text: "Qty" });
+	headRow.createEl("th", { text: "Need", cls: "mtg-deck-qty" });
+	headRow.createEl("th", { text: "Have", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Card" });
 	headRow.createEl("th", { text: "Current price" });
 
@@ -1143,7 +1167,8 @@ export async function renderDeckTable(
 				? "Finalizing deck metadata…"
 				: `Loading deck metadata ${completed}/${total}…`;
 	}).then(async (rows) => {
-		const coverage = await buildDeckCollectionCoverage(rows, collectionTotalsPromise);
+		const collectionTotals = await collectionTotalsPromise;
+		const coverage = await buildDeckCollectionCoverage(rows, collectionTotals);
 		const analytics = buildDeckAnalytics(rows);
 		const validationIssues = buildDeckValidation(rows, deckFormat);
 		if (

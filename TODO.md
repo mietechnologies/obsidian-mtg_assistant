@@ -7,4 +7,3 @@
 - Commands and quick actions:
   Add command palette actions for inserting card references, creating deck or collection blocks, refreshing cache, and opening external card pages.
 - Consider reusing collection-style quantity controls for future deck wishlist or inventory workflows.
-- Update README
