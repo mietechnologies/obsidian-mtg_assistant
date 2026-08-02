@@ -278,7 +278,7 @@ function renderCollectionRows(
 					cardName: row.cardName,
 					availableQuantity: row.quantity,
 				},
-				{ allowRemove: true }
+				{ allowRemove: true, allowAddNew: true }
 			).open();
 		}
 		: null;

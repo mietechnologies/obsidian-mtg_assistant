@@ -1530,7 +1530,7 @@ export async function renderDeckTable(
 						cardName: row.cardName,
 						availableQuantity: inlineHave,
 					},
-					{ allowRemove: true }
+					{ allowRemove: true, allowAddNew: true }
 				).open();
 			}
 			: null;

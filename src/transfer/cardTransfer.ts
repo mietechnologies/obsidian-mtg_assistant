@@ -23,6 +23,7 @@ export interface TransferRowContext {
 
 export interface CardTransferModalOptions {
 	allowRemove?: boolean;
+	allowAddNew?: boolean;
 }
 
 export interface TransferSourceOption extends TransferSourceContext {
@@ -439,11 +440,47 @@ async function removeFromSource(
 	});
 }
 
+async function addNewToBlock(
+	app: App,
+	settings: MTGSettings,
+	target: TransferBlockRef,
+	cardName: string,
+	quantity: number
+): Promise<void> {
+	if (quantity <= 0 || quantity > Number.MAX_SAFE_INTEGER) {
+		throw new Error("Add quantity must be positive.");
+	}
+
+	const targetFile = app.vault.getAbstractFileByPath(target.path);
+	if (!(targetFile instanceof TFile)) {
+		throw new Error("Could not find the target note.");
+	}
+
+	await app.vault.process(targetFile, (content) => {
+		const eol = content.includes("\r\n") ? "\r\n" : "\n";
+		const block = locateBlock(content, target.lineStart, target.language, settings);
+		if (!block) {
+			throw new Error("Could not locate the target block.");
+		}
+
+		const lines = content.split(/\r?\n/);
+		replaceBlockSource(
+			lines,
+			block,
+			target.language,
+			settings,
+			updateBlockSource({ ...target, source: block.source }, cardName, quantity)
+		);
+		return lines.join(eol);
+	});
+}
+
 export class CardTransferModal extends Modal {
 	private targets: TransferTargetBlock[] = [];
 	private blockSelect!: HTMLSelectElement;
 	private quantityInput!: HTMLInputElement;
 	private applyButton!: HTMLButtonElement;
+	private addNewButton?: HTMLButtonElement;
 	private removeButton?: HTMLButtonElement;
 
 	constructor(
@@ -491,6 +528,17 @@ export class CardTransferModal extends Modal {
 		this.applyButton.addEventListener("click", () => {
 			void this.apply();
 		});
+
+		if (this.options.allowAddNew) {
+			this.addNewButton = actions.createEl("button", {
+				text: "Add new",
+			});
+			this.addNewButton.type = "button";
+			this.addNewButton.disabled = true;
+			this.addNewButton.addEventListener("click", () => {
+				void this.addNew();
+			});
+		}
 
 		if (this.options.allowRemove) {
 			this.removeButton = actions.createEl("button", {
@@ -569,6 +617,9 @@ export class CardTransferModal extends Modal {
 				quantity < 1 ||
 				quantity > this.row.availableQuantity;
 		}
+		if (this.addNewButton) {
+			this.addNewButton.disabled = quantity < 1;
+		}
 	}
 
 	private async apply(): Promise<void> {
@@ -615,12 +666,44 @@ export class CardTransferModal extends Modal {
 			}
 		}
 	}
+
+	private async addNew(): Promise<void> {
+		const quantity = this.getQuantity();
+		if (quantity < 1) {
+			return;
+		}
+
+		this.applyButton.disabled = true;
+		if (this.addNewButton) {
+			this.addNewButton.disabled = true;
+		}
+		if (this.removeButton) {
+			this.removeButton.disabled = true;
+		}
+		try {
+			await addNewToBlock(this.app, this.settings, this.row.source, this.row.cardName, quantity);
+			await this.row.source.onTransferComplete?.();
+			new Notice(`Added ${quantity} ${this.row.cardName}.`);
+			this.close();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Add failed.";
+			new Notice(message);
+			this.applyButton.disabled = false;
+			if (this.addNewButton) {
+				this.addNewButton.disabled = false;
+			}
+			if (this.removeButton) {
+				this.removeButton.disabled = false;
+			}
+		}
+	}
 }
 
 export class CardTransferToTargetModal extends Modal {
 	private sourceSelect!: HTMLSelectElement;
 	private quantityInput!: HTMLInputElement;
 	private applyButton!: HTMLButtonElement;
+	private addNewButton!: HTMLButtonElement;
 
 	constructor(
 		app: App,
@@ -665,6 +748,15 @@ export class CardTransferToTargetModal extends Modal {
 		this.applyButton.disabled = true;
 		this.applyButton.addEventListener("click", () => {
 			void this.apply();
+		});
+
+		this.addNewButton = actions.createEl("button", {
+			text: "Add new",
+		});
+		this.addNewButton.type = "button";
+		this.addNewButton.disabled = true;
+		this.addNewButton.addEventListener("click", () => {
+			void this.addNew();
 		});
 
 		const cancelButton = actions.createEl("button", { text: "Cancel" });
@@ -732,6 +824,7 @@ export class CardTransferToTargetModal extends Modal {
 			!source ||
 			quantity < 1 ||
 			quantity > source.availableQuantity;
+		this.addNewButton.disabled = quantity < 1;
 	}
 
 	private async apply(): Promise<void> {
@@ -752,6 +845,27 @@ export class CardTransferToTargetModal extends Modal {
 			const message = error instanceof Error ? error.message : "Transfer failed.";
 			new Notice(message);
 			this.applyButton.disabled = false;
+		}
+	}
+
+	private async addNew(): Promise<void> {
+		const quantity = this.getQuantity();
+		if (quantity < 1) {
+			return;
+		}
+
+		this.applyButton.disabled = true;
+		this.addNewButton.disabled = true;
+		try {
+			await addNewToBlock(this.app, this.settings, this.target, this.cardName, quantity);
+			await this.onTransferComplete?.();
+			new Notice(`Added ${quantity} ${this.cardName}.`);
+			this.close();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Add failed.";
+			new Notice(message);
+			this.applyButton.disabled = false;
+			this.addNewButton.disabled = false;
 		}
 	}
 }
@@ -778,7 +892,7 @@ export function createTransferButton(
 		if (button.disabled) {
 			return;
 		}
-		new CardTransferModal(app, settings, row).open();
+		new CardTransferModal(app, settings, row, { allowAddNew: true }).open();
 	});
 	return button;
 }
