@@ -395,7 +395,7 @@ function renderHoldingsTable(
 	headRow.createEl("th", { text: "Total" });
 
 	const tbody = table.createEl("tbody");
-	for (const row of rows.slice(0, 50)) {
+	for (const row of rows) {
 		const tr = tbody.createEl("tr", { cls: "mtg-collection-row" });
 		tr.appendChild(createQuantityCell(view, row));
 		const cardCell = tr.createEl("td");
