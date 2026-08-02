@@ -6,7 +6,7 @@ import { attachHoverEvents, MtgPopover } from "./cardImageRenderer";
 import { createColorIdentityElement } from "./colorIdentity";
 import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createRateLimitWarning } from "./lookupWarning";
-import { createTransferButton, TransferSourceContext } from "../transfer/cardTransfer";
+import { CardTransferModal, createTransferButton, TransferSourceContext } from "../transfer/cardTransfer";
 
 interface CollectionRow {
 	key: string;
@@ -197,7 +197,8 @@ function createCollectionCardCell(
 
 function createQuantityCell(
 	row: CollectionRow,
-	onAdjust: (key: string, delta: number) => Promise<void>
+	onAdjust: (key: string, delta: number) => Promise<void>,
+	onTransferAway: ((row: CollectionRow) => void) | null
 ): HTMLTableCellElement {
 	const cell = document.createElement("td");
 	cell.className = "mtg-collection-qty";
@@ -212,6 +213,10 @@ function createQuantityCell(
 	decrement.addEventListener("click", (event) => {
 		event.preventDefault();
 		event.stopPropagation();
+		if (onTransferAway && row.quantity > 0) {
+			onTransferAway(row);
+			return;
+		}
 		void onAdjust(row.key, -1);
 	});
 
@@ -246,6 +251,20 @@ function renderCollectionRows(
 	transfer: RenderCollectionTableOptions["transfer"]
 ): void {
 	let currentSection = "";
+	const onTransferAway = transfer
+		? (row: CollectionRow): void => {
+			new CardTransferModal(
+				transfer.app,
+				getSettings(),
+				{
+					source: transfer.source,
+					cardName: row.cardName,
+					availableQuantity: row.quantity,
+				},
+				{ allowRemove: true }
+			).open();
+		}
+		: null;
 
 	for (const row of rows) {
 		if (row.section !== currentSection) {
@@ -259,7 +278,7 @@ function renderCollectionRows(
 		}
 
 		const tr = tableBody.createEl("tr", { cls: "mtg-collection-row" });
-		tr.appendChild(createQuantityCell(row, onAdjust));
+		tr.appendChild(createQuantityCell(row, onAdjust, onTransferAway));
 		tr.appendChild(createCollectionCardCell(row, cache, getSettings, popover, onRetry));
 		const colorCell = tr.createEl("td", { cls: "mtg-collection-color" });
 		colorCell.appendChild(createColorIdentityElement(row.colorIdentity));

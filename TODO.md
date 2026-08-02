@@ -7,7 +7,6 @@
 - Commands and quick actions:
   Add command palette actions for inserting card references, creating deck or collection blocks, refreshing cache, and opening external card pages.
 - Deck list upgrades:
-    - Add rendered deck controls for incrementing and decrementing inline `have` counts.
     - mtg-deck blocks should be included in the broad collection, but mtg-deck blocks should not count the cards in other mtg-deck blocks.
     - Popover in `mtg-deck` blocks should also state where the card exists. The note name should be shown with a link to that note.
     - Add ability to collapse deck/collection list to make traversing easier (default state should be configurable)

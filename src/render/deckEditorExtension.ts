@@ -12,6 +12,10 @@ function buildDeckBlockRegex(language: string): RegExp {
 	return new RegExp("(^|\\n)```" + escaped + "\\n([\\s\\S]*?)\\n```(?=\\n|$)", "g");
 }
 
+function buildDeckBlockText(language: string, source: string): string {
+	return `\`\`\`${language}\n${source}\n\`\`\``;
+}
+
 function isDeckWidgetInteractiveEvent(event: Event): boolean {
 	const target = event.target;
 	return (
@@ -25,6 +29,7 @@ class MtgDeckWidget extends WidgetType {
 		private readonly app: App,
 		private readonly source: string,
 		private readonly blockStart: number,
+		private readonly blockEnd: number,
 		private readonly cache: CardCache,
 		private readonly collectionIndex: CollectionIndex,
 		private readonly getSettings: () => MTGSettings,
@@ -34,7 +39,11 @@ class MtgDeckWidget extends WidgetType {
 	}
 
 	eq(other: MtgDeckWidget): boolean {
-		return other.source === this.source && other.blockStart === this.blockStart;
+		return (
+			other.source === this.source &&
+			other.blockStart === this.blockStart &&
+			other.blockEnd === this.blockEnd
+		);
 	}
 
 	toDOM(view: EditorView): HTMLElement {
@@ -42,6 +51,20 @@ class MtgDeckWidget extends WidgetType {
 		container.className = "mtg-deck-widget";
 		const activeFile = this.app.workspace.getActiveFile();
 		const lineStart = view.state.doc.lineAt(this.blockStart).number - 1;
+		const updateSource = (nextSource: string): void => {
+			const nextBlock = buildDeckBlockText(
+				this.getSettings().deckCodeBlockLanguage,
+				nextSource
+			);
+			view.dispatch({
+				changes: {
+					from: this.blockStart,
+					to: this.blockEnd,
+					insert: nextBlock,
+				},
+			});
+			this.collectionIndex.invalidate();
+		};
 		container.addEventListener("click", (event) => {
 			if (isDeckWidgetInteractiveEvent(event)) {
 				return;
@@ -60,6 +83,7 @@ class MtgDeckWidget extends WidgetType {
 			this.collectionIndex,
 			this.getSettings,
 			this.popover,
+			updateSource,
 			activeFile
 				? {
 					app: this.app,
@@ -119,6 +143,7 @@ function buildDecorations(
 					app,
 					match[2] ?? "",
 					blockStart,
+					blockEnd,
 					cache,
 					collectionIndex,
 					getSettings,

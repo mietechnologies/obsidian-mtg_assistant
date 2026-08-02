@@ -183,6 +183,58 @@
 	font-variant-numeric: tabular-nums;
 }
 
+.mtg-deck-have-controls {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+}
+
+.mtg-deck-have-value {
+	min-width: 1.5rem;
+	color: var(--text-muted);
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.mtg-deck-owned-hint {
+	margin-left: 0.5rem;
+	color: var(--text-faint);
+	font-size: 0.85em;
+	white-space: nowrap;
+}
+
+.mtg-deck-have-stepper {
+	opacity: 0;
+	width: 1.4rem;
+	height: 1.4rem;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	line-height: 1;
+	cursor: pointer;
+	transition: opacity 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.mtg-deck-row:hover .mtg-deck-have-stepper,
+.mtg-deck-row:focus-within .mtg-deck-have-stepper {
+	opacity: 1;
+}
+
+.mtg-deck-have-stepper:hover,
+.mtg-deck-have-stepper:focus-visible {
+	border-color: var(--interactive-accent);
+	transform: translateY(-1px);
+}
+
+.mtg-deck-have-stepper:disabled {
+	color: var(--text-faint);
+	cursor: default;
+	transform: none;
+}
+
 .mtg-transfer-header,
 .mtg-transfer-cell {
 	width: 2.75rem;

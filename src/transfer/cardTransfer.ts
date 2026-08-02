@@ -21,6 +21,19 @@ export interface TransferRowContext {
 	availableQuantity: number;
 }
 
+export interface CardTransferModalOptions {
+	allowRemove?: boolean;
+}
+
+export interface TransferSourceOption extends TransferSourceContext {
+	label: string;
+	availableQuantity: number;
+}
+
+export interface FixedTransferTarget extends TransferBlockRef {
+	label: string;
+}
+
 interface LocatedBlock {
 	startLine: number;
 	endLine: number;
@@ -377,16 +390,53 @@ async function applyTransfer(
 	});
 }
 
+async function removeFromSource(
+	app: App,
+	settings: MTGSettings,
+	source: TransferSourceContext,
+	cardName: string,
+	quantity: number
+): Promise<void> {
+	if (quantity <= 0 || quantity > Number.MAX_SAFE_INTEGER) {
+		throw new Error("Remove quantity must be positive.");
+	}
+
+	const sourceFile = app.vault.getAbstractFileByPath(source.path);
+	if (!(sourceFile instanceof TFile)) {
+		throw new Error("Could not find the source note.");
+	}
+
+	await app.vault.process(sourceFile, (content) => {
+		const eol = content.includes("\r\n") ? "\r\n" : "\n";
+		const block = locateBlock(content, source.lineStart, source.language, settings);
+		if (!block) {
+			throw new Error("Could not locate the source block.");
+		}
+
+		const lines = content.split(/\r?\n/);
+		replaceBlockSource(
+			lines,
+			block,
+			source.language,
+			settings,
+			updateBlockSource({ ...source, source: block.source }, cardName, -quantity)
+		);
+		return lines.join(eol);
+	});
+}
+
 export class CardTransferModal extends Modal {
 	private targets: TransferTargetBlock[] = [];
 	private blockSelect!: HTMLSelectElement;
 	private quantityInput!: HTMLInputElement;
 	private applyButton!: HTMLButtonElement;
+	private removeButton?: HTMLButtonElement;
 
 	constructor(
 		app: App,
 		private readonly settings: MTGSettings,
-		private readonly row: TransferRowContext
+		private readonly row: TransferRowContext,
+		private readonly options: CardTransferModalOptions = {}
 	) {
 		super(app);
 	}
@@ -427,6 +477,18 @@ export class CardTransferModal extends Modal {
 		this.applyButton.addEventListener("click", () => {
 			void this.apply();
 		});
+
+		if (this.options.allowRemove) {
+			this.removeButton = actions.createEl("button", {
+				text: "Remove",
+				cls: "mod-warning",
+			});
+			this.removeButton.type = "button";
+			this.removeButton.disabled = true;
+			this.removeButton.addEventListener("click", () => {
+				void this.remove();
+			});
+		}
 
 		const cancelButton = actions.createEl("button", { text: "Cancel" });
 		cancelButton.type = "button";
@@ -488,6 +550,11 @@ export class CardTransferModal extends Modal {
 			!this.getSelectedTarget() ||
 			quantity < 1 ||
 			quantity > this.row.availableQuantity;
+		if (this.removeButton) {
+			this.removeButton.disabled =
+				quantity < 1 ||
+				quantity > this.row.availableQuantity;
+		}
 	}
 
 	private async apply(): Promise<void> {
@@ -502,6 +569,170 @@ export class CardTransferModal extends Modal {
 			await applyTransfer(this.app, this.settings, this.row.source, target, this.row.cardName, quantity);
 			await this.row.source.onTransferComplete?.();
 			new Notice(`Transferred ${quantity} ${this.row.cardName}.`);
+			this.close();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Transfer failed.";
+			new Notice(message);
+			this.applyButton.disabled = false;
+		}
+	}
+
+	private async remove(): Promise<void> {
+		const quantity = this.getQuantity();
+		if (quantity < 1 || quantity > this.row.availableQuantity) {
+			return;
+		}
+
+		this.applyButton.disabled = true;
+		if (this.removeButton) {
+			this.removeButton.disabled = true;
+		}
+		try {
+			await removeFromSource(this.app, this.settings, this.row.source, this.row.cardName, quantity);
+			await this.row.source.onTransferComplete?.();
+			new Notice(`Removed ${quantity} ${this.row.cardName}.`);
+			this.close();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Remove failed.";
+			new Notice(message);
+			this.applyButton.disabled = false;
+			if (this.removeButton) {
+				this.removeButton.disabled = false;
+			}
+		}
+	}
+}
+
+export class CardTransferToTargetModal extends Modal {
+	private sourceSelect!: HTMLSelectElement;
+	private quantityInput!: HTMLInputElement;
+	private applyButton!: HTMLButtonElement;
+
+	constructor(
+		app: App,
+		private readonly settings: MTGSettings,
+		private readonly cardName: string,
+		private readonly sources: TransferSourceOption[],
+		private readonly target: FixedTransferTarget,
+		private readonly onTransferComplete?: () => void | Promise<void>
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass("mtg-transfer-modal");
+		contentEl.createEl("h3", { text: "Transfer card" });
+		contentEl.createEl("p", {
+			text: this.cardName,
+			cls: "mtg-transfer-card-name",
+		});
+		contentEl.createEl("p", {
+			cls: "mtg-transfer-meta",
+			text: `To ${this.target.label}`,
+		});
+
+		this.sourceSelect = this.createLabeledSelect(contentEl, "Source collection");
+
+		const quantityLabel = contentEl.createEl("label", { cls: "mtg-transfer-field" });
+		quantityLabel.createEl("span", { text: "Quantity" });
+		this.quantityInput = quantityLabel.createEl("input");
+		this.quantityInput.type = "number";
+		this.quantityInput.min = "1";
+		this.quantityInput.value = "1";
+
+		const actions = contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		this.applyButton = actions.createEl("button", {
+			text: "Apply",
+			cls: "mod-cta",
+		});
+		this.applyButton.type = "button";
+		this.applyButton.disabled = true;
+		this.applyButton.addEventListener("click", () => {
+			void this.apply();
+		});
+
+		const cancelButton = actions.createEl("button", { text: "Cancel" });
+		cancelButton.type = "button";
+		cancelButton.addEventListener("click", () => this.close());
+
+		this.sourceSelect.addEventListener("change", () => this.updateQuantityLimit());
+		this.quantityInput.addEventListener("input", () => this.updateApplyState());
+
+		this.renderSourceOptions();
+	}
+
+	private createLabeledSelect(containerEl: HTMLElement, label: string): HTMLSelectElement {
+		const wrapper = containerEl.createEl("label", { cls: "mtg-transfer-field" });
+		wrapper.createEl("span", { text: label });
+		return wrapper.createEl("select");
+	}
+
+	private renderSourceOptions(): void {
+		this.sourceSelect.empty();
+		if (this.sources.length === 0) {
+			this.sourceSelect.createEl("option", { text: "No source collections found", value: "" });
+			this.updateQuantityLimit();
+			return;
+		}
+
+		for (const source of this.sources) {
+			this.sourceSelect.createEl("option", {
+				text: source.label,
+				value: `${source.path}\u0000${source.lineStart}\u0000${source.language}`,
+			});
+		}
+		this.updateQuantityLimit();
+	}
+
+	private getSelectedSource(): TransferSourceOption | null {
+		const value = this.sourceSelect.value;
+		return (
+			this.sources.find(
+				(source) =>
+					`${source.path}\u0000${source.lineStart}\u0000${source.language}` === value
+			) ?? null
+		);
+	}
+
+	private getQuantity(): number {
+		const quantity = Number.parseInt(this.quantityInput.value, 10);
+		return Number.isFinite(quantity) ? quantity : 0;
+	}
+
+	private updateQuantityLimit(): void {
+		const source = this.getSelectedSource();
+		const max = source?.availableQuantity ?? 0;
+		this.quantityInput.max = String(max);
+		if (max > 0 && (this.getQuantity() < 1 || this.getQuantity() > max)) {
+			this.quantityInput.value = "1";
+		}
+		this.updateApplyState();
+	}
+
+	private updateApplyState(): void {
+		const source = this.getSelectedSource();
+		const quantity = this.getQuantity();
+		this.applyButton.disabled =
+			!source ||
+			quantity < 1 ||
+			quantity > source.availableQuantity;
+	}
+
+	private async apply(): Promise<void> {
+		const source = this.getSelectedSource();
+		const quantity = this.getQuantity();
+		if (!source || quantity < 1 || quantity > source.availableQuantity) {
+			return;
+		}
+
+		this.applyButton.disabled = true;
+		try {
+			await applyTransfer(this.app, this.settings, source, this.target, this.cardName, quantity);
+			await source.onTransferComplete?.();
+			await this.onTransferComplete?.();
+			new Notice(`Transferred ${quantity} ${this.cardName}.`);
 			this.close();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Transfer failed.";

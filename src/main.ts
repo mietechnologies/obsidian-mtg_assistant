@@ -142,6 +142,14 @@ export default class MtgAssistantPlugin extends Plugin {
 					this.collectionIndex,
 					() => this.settings,
 					this.popover,
+					(nextSource) => {
+						return this.updateDeckBlockInFile(
+							sourcePath,
+							sectionInfo?.lineStart ?? 0,
+							sectionInfo?.text ?? "",
+							nextSource
+						);
+					},
 					sectionInfo
 						? {
 							app: this.app,
@@ -266,13 +274,46 @@ export default class MtgAssistantPlugin extends Plugin {
 		sectionText: string,
 		nextSource: string
 	): Promise<void> {
+		return this.updateCodeBlockInFile(
+			sourcePath,
+			lineStart,
+			sectionText,
+			this.settings.collectionCodeBlockLanguage,
+			nextSource
+		);
+	}
+
+	private async updateDeckBlockInFile(
+		sourcePath: string,
+		lineStart: number,
+		sectionText: string,
+		nextSource: string
+	): Promise<void> {
+		await this.updateCodeBlockInFile(
+			sourcePath,
+			lineStart,
+			sectionText,
+			this.settings.deckCodeBlockLanguage,
+			nextSource
+		);
+		this.collectionIndex.invalidate();
+		this.refreshViews();
+	}
+
+	private async updateCodeBlockInFile(
+		sourcePath: string,
+		lineStart: number,
+		sectionText: string,
+		language: string,
+		nextSource: string
+	): Promise<void> {
 		const file = this.app.vault.getAbstractFileByPath(sourcePath);
 		if (!(file instanceof TFile) || !sectionText) {
 			return;
 		}
 
 		const sectionLineCount = sectionText.split(/\r?\n/).length;
-		const nextBlock = `\`\`\`${this.settings.collectionCodeBlockLanguage}\n${nextSource}\n\`\`\``;
+		const nextBlock = `\`\`\`${language}\n${nextSource}\n\`\`\``;
 		await this.app.vault.process(file, (currentContent) => {
 			const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
 			const currentLines = currentContent.split(/\r?\n/);

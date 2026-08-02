@@ -10,6 +10,7 @@ import { attachHoverEvents, MtgPopover } from "../render/cardImageRenderer";
 import { createManaCostElement } from "../render/manaCost";
 import { parseCollectionList } from "../parser/deckParser";
 import { MTGSettings } from "../settings";
+import { CardTransferModal } from "../transfer/cardTransfer";
 
 export const COLLECTION_OVERVIEW_VIEW_TYPE = "mtg-collection-overview";
 
@@ -177,7 +178,7 @@ function createQuantityCell(
 	decrement.addEventListener("click", (event) => {
 		event.preventDefault();
 		event.stopPropagation();
-		void view.adjustQuantity(row, -1);
+		view.transferOrRemoveQuantity(row);
 	});
 
 	wrapper.createEl("span", {
@@ -481,6 +482,34 @@ export class CollectionOverviewView extends ItemView {
 			return currentLines.join(eol);
 		});
 		await this.refresh();
+	}
+
+	transferOrRemoveQuantity(row: ResolvedCollectionRow): void {
+		const sourceRef = chooseSourceRef(row, -1);
+		if (!sourceRef || sourceRef.quantity <= 0) {
+			void this.adjustQuantity(row, -1);
+			return;
+		}
+
+		new CardTransferModal(
+			this.app,
+			this.getSettingsAccessor(),
+			{
+				source: {
+					path: sourceRef.sourcePath,
+					lineStart: sourceRef.lineStart,
+					language: "collection",
+					source: sourceRef.sectionText,
+					onTransferComplete: async () => {
+						this.collectionIndex.invalidate();
+						await this.refresh();
+					},
+				},
+				cardName: row.cardName,
+				availableQuantity: sourceRef.quantity,
+			},
+			{ allowRemove: true }
+		).open();
 	}
 
 	private createControls(
