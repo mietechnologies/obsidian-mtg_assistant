@@ -38,6 +38,90 @@
 	pointer-events: none;
 }
 
+.mtg-block-title-button {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.55rem;
+	width: 100%;
+	margin: 1rem 0 0.85rem;
+	padding: 0.85rem 0.75rem;
+	border: none;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: 1.05em;
+	font-weight: 700;
+	text-align: left;
+	cursor: pointer;
+	appearance: none;
+}
+
+.mtg-block-title-button::before,
+.mtg-section-toggle::before {
+	content: "▾";
+	color: var(--text-muted);
+	font-size: 0.95rem;
+	transform: translateY(-1px);
+	transition: transform 120ms ease;
+}
+
+.mtg-block-title-button[aria-expanded="false"]::before,
+.mtg-section-toggle[aria-expanded="false"]::before {
+	transform: rotate(-90deg) translateX(1px);
+}
+
+.mtg-block-title-button:hover,
+.mtg-block-title-button:focus-visible {
+	color: var(--text-accent);
+}
+
+.mtg-block-title-text,
+.mtg-section-toggle-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mtg-block-title-text {
+	flex: 1 1 auto;
+	text-align: left;
+}
+
+.mtg-block-title-meta {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+	font-size: 0.82em;
+	font-weight: 600;
+	text-align: right;
+}
+
+.mtg-block-title-meta.is-empty {
+	display: none;
+}
+
+.mtg-block-body.is-collapsed,
+tr.is-collapsed {
+	display: none;
+}
+
+.mtg-section-toggle {
+	text-align: left;
+	cursor: pointer;
+	outline-offset: -2px;
+}
+
+.mtg-section-toggle::before {
+	display: inline-block;
+	margin-right: 0.35rem;
+}
+
+.mtg-section-toggle:hover,
+.mtg-section-toggle:focus-visible {
+	color: var(--text-normal);
+}
+
 .mtg-card-popover {
 	position: fixed;
 	z-index: 9999;
@@ -192,7 +276,7 @@
 	padding-top: 1rem;
 	font-weight: 700;
 	font-size: 1.05em;
-	color: var(--text-accent);
+	color: var(--text-normal);
 	background: var(--background-secondary);
 	text-align: left !important;
 }
@@ -872,7 +956,7 @@
 	padding-top: 1rem;
 	font-weight: 700;
 	font-size: 1.05em;
-	color: var(--text-accent);
+	color: var(--text-normal);
 	background: var(--background-secondary);
 	text-align: left !important;
 }

@@ -20,7 +20,7 @@ function isDeckWidgetInteractiveEvent(event: Event): boolean {
 	const target = event.target;
 	return (
 		target instanceof HTMLElement &&
-		Boolean(target.closest("button, .mtg-card-ref, details, summary, a, input, select"))
+		Boolean(target.closest("button, .mtg-section-toggle, .mtg-card-ref, details, summary, a, input, select"))
 	);
 }
 
@@ -97,7 +97,8 @@ class MtgDeckWidget extends WidgetType {
 						},
 					},
 				}
-				: null
+				: null,
+			activeFile?.basename
 		);
 		return container;
 	}

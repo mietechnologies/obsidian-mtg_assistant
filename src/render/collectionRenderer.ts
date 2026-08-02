@@ -8,6 +8,7 @@ import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createRateLimitWarning } from "./lookupWarning";
 import { CardTransferModal, createTransferButton, TransferSourceContext } from "../transfer/cardTransfer";
 import { loadOwnershipRefsForCards, OwnershipBlockRef } from "../ownership/cardOwnership";
+import { createCollapsibleBlock, createCollapsibleSectionRow } from "./collapsible";
 
 interface CollectionRow {
 	key: string;
@@ -29,6 +30,7 @@ interface RenderCollectionTableOptions {
 	popover: MtgPopover;
 	onUpdateSource: (nextSource: string) => void | Promise<void>;
 	onActivateEditor?: () => void;
+	title?: string;
 	transfer?: {
 		app: App;
 		source: TransferSourceContext;
@@ -259,9 +261,11 @@ function renderCollectionRows(
 	onAdjust: (key: string, delta: number) => Promise<void>,
 	onRetry: (cardName: string) => Promise<void>,
 	transfer: RenderCollectionTableOptions["transfer"],
-	ownershipRefsByKey: Map<string, OwnershipBlockRef[]>
+	ownershipRefsByKey: Map<string, OwnershipBlockRef[]>,
+	sectionsCollapsedByDefault: boolean
 ): void {
 	let currentSection = "";
+	let currentSectionRows: ReturnType<typeof createCollapsibleSectionRow> | null = null;
 	const onTransferAway = transfer
 		? (row: CollectionRow): void => {
 			new CardTransferModal(
@@ -280,15 +284,18 @@ function renderCollectionRows(
 	for (const row of rows) {
 		if (row.section !== currentSection) {
 			currentSection = row.section;
-			const sectionRow = tableBody.createEl("tr", { cls: "mtg-collection-section-row" });
-			const sectionCell = sectionRow.createEl("td", {
-				text: currentSection,
-				cls: "mtg-collection-section-cell",
-			});
-			sectionCell.colSpan = transfer ? 5 : 4;
+			currentSectionRows = createCollapsibleSectionRow(
+				tableBody,
+				currentSection,
+				transfer ? 5 : 4,
+				"mtg-collection-section-cell",
+				sectionsCollapsedByDefault
+			);
+			currentSectionRows.rowEl.addClass("mtg-collection-section-row");
 		}
 
 		const tr = tableBody.createEl("tr", { cls: "mtg-collection-row" });
+		currentSectionRows?.addRow(tr);
 		tr.appendChild(createQuantityCell(row, onAdjust, onTransferAway));
 		tr.appendChild(createCollectionCardCell(
 			transfer?.app ?? null,
@@ -326,14 +333,22 @@ export async function renderCollectionTable(
 		popover,
 		onUpdateSource,
 		onActivateEditor,
+		title,
 		transfer,
 	} = options;
 	containerEl.empty();
 	containerEl.addClass("mtg-collection-block");
 
 	const parsed = parseCollectionList(source);
+	const settings = getSettings();
+	const block = createCollapsibleBlock(
+		containerEl,
+		parsed.name ?? title ?? "Collection",
+		settings.collectionListsCollapsedByDefault
+	);
+	const bodyEl = block.bodyEl;
 	if (parsed.cards.length === 0) {
-		containerEl.createEl("p", {
+		bodyEl.createEl("p", {
 			text: "No collection cards found in this block.",
 			cls: "mtg-card-popover-message",
 		});
@@ -386,17 +401,17 @@ export async function renderCollectionTable(
 		}
 	};
 
-	const loadingEl = containerEl.createEl("p", {
+	const loadingEl = bodyEl.createEl("p", {
 		text: "Loading collection metadata 0/" + String(parsed.cards.length) + "…",
 		cls: "mtg-card-popover-message",
 	});
 
 	if (onActivateEditor) {
-		containerEl.addEventListener("click", (event) => {
+		bodyEl.addEventListener("click", (event) => {
 			const target = event.target;
 			if (
 				target instanceof HTMLElement &&
-				target.closest("button, .mtg-card-ref, details, summary, a, input, select")
+				target.closest("button, .mtg-section-toggle, .mtg-card-ref, details, summary, a, input, select")
 			) {
 				return;
 			}
@@ -404,7 +419,7 @@ export async function renderCollectionTable(
 		});
 	}
 
-	const table = containerEl.createEl("table", { cls: "mtg-collection-table" });
+	const table = bodyEl.createEl("table", { cls: "mtg-collection-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
 	headRow.createEl("th", { text: "Qty" });
@@ -425,7 +440,8 @@ export async function renderCollectionTable(
 		onAdjust,
 		onRetry,
 		transfer,
-		ownershipRefsByKey
+		ownershipRefsByKey,
+		settings.collectionSectionsCollapsedByDefault
 	);
 
 	void mapCollectionRows(parsed.cards, cache, (completed, total) => {
@@ -460,7 +476,8 @@ export async function renderCollectionTable(
 			onAdjust,
 			onRetry,
 			transfer,
-			ownershipRefsByKey
+			ownershipRefsByKey,
+			getSettings().collectionSectionsCollapsedByDefault
 		);
 	});
 }

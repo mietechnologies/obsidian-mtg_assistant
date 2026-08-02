@@ -8,6 +8,7 @@ import { attachHoverEvents, MtgPopover, renderOwnershipPopoverSection } from "./
 import { OwnershipBlockRef } from "../ownership/cardOwnership";
 import { MTGSettings } from "../settings";
 import { inferSection, normalizeSectionName, sectionSortKey, titleCaseSection } from "./cardSections";
+import { createCollapsibleBlock, createCollapsibleSectionRow } from "./collapsible";
 import { createColorIdentityElement } from "./colorIdentity";
 import { createInlineWarning, createRateLimitWarning } from "./lookupWarning";
 import {
@@ -809,19 +810,23 @@ function renderTableRows(
 	onTransferAway: ((row: DeckRow, inlineHave: number) => void) | null,
 	collectionTotals: CollectionTotals | null = null,
 	collectionOverview: CollectionOverview | null = null,
-	transfer: DeckTransferContext | null = null
+	transfer: DeckTransferContext | null = null,
+	sectionsCollapsedByDefault = false
 ): void {
 	let currentSection = "";
+	let currentSectionRows: ReturnType<typeof createCollapsibleSectionRow> | null = null;
 
 	for (const row of rows) {
 		if (row.section !== currentSection) {
 			currentSection = row.section;
-			const sectionRow = tableBody.createEl("tr", { cls: "mtg-deck-section-row" });
-			const sectionCell = sectionRow.createEl("td", {
-				text: currentSection,
-				cls: "mtg-deck-section-cell",
-			});
-			sectionCell.colSpan = transfer ? 5 : 4;
+			currentSectionRows = createCollapsibleSectionRow(
+				tableBody,
+				currentSection,
+				transfer ? 5 : 4,
+				"mtg-deck-section-cell",
+				sectionsCollapsedByDefault
+			);
+			currentSectionRows.rowEl.addClass("mtg-deck-section-row");
 		}
 
 		const owned = getOwnedQuantity(row, collectionTotals);
@@ -830,6 +835,7 @@ function renderTableRows(
 			? buildCollectionOwnershipRefs(row, collectionOverview)
 			: [];
 		const tr = tableBody.createEl("tr", { cls: "mtg-deck-row" });
+		currentSectionRows?.addRow(tr);
 		tr.createEl("td", { text: String(row.quantity), cls: "mtg-deck-qty" });
 		tr.appendChild(
 			createHaveCell(
@@ -967,6 +973,7 @@ function renderResolvedDeckContent(
 	onTransferAway: ((row: DeckRow, inlineHave: number) => void) | null,
 	transfer: DeckTransferContext | null
 ): void {
+	const settings = getSettings();
 	renderUnsupportedDeckFormatWarning(containerEl, rawFormat, deckFormat);
 
 	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
@@ -994,7 +1001,8 @@ function renderResolvedDeckContent(
 		onTransferAway,
 		coverage.collectionTotals,
 		collectionOverview,
-		transfer
+		transfer,
+		settings.deckSectionsCollapsedByDefault
 	);
 	renderTableFooter(table, rows, undefined, coverage.collectionTotals);
 	renderCollectionCoverageSection(containerEl, coverage, app, cache, getSettings, popover, onRetry);
@@ -1432,14 +1440,23 @@ export async function renderDeckTable(
 	getSettings: () => MTGSettings,
 	popover: MtgPopover,
 	onUpdateSource: UpdateDeckSource | null = null,
-	transfer: DeckTransferContext | null = null
+	transfer: DeckTransferContext | null = null,
+	title?: string
 ): Promise<void> {
 	containerEl.empty();
 	containerEl.addClass("mtg-deck-block");
 
-	const parsed = parseDeckList(source, getSettings().commanderMarker);
+	const settings = getSettings();
+	const parsed = parseDeckList(source, settings.commanderMarker);
+	const block = createCollapsibleBlock(
+		containerEl,
+		parsed.name ?? title ?? "Deck",
+		settings.deckListsCollapsedByDefault,
+		parsed.format ? formatDeckFormatLabel(parsed.format) : undefined
+	);
+	const bodyEl = block.bodyEl;
 	if (parsed.cards.length === 0) {
-		containerEl.createEl("p", {
+		bodyEl.createEl("p", {
 			text: "No deck cards found in this block.",
 			cls: "mtg-card-popover-message",
 		});
@@ -1510,10 +1527,10 @@ export async function renderDeckTable(
 			}
 			: null;
 
-	renderUnsupportedDeckFormatWarning(containerEl, parsed.format, deckFormat);
+	renderUnsupportedDeckFormatWarning(bodyEl, parsed.format, deckFormat);
 
 	const initialRows = createInitialDeckRows(parsed.cards);
-	const table = containerEl.createEl("table", { cls: "mtg-deck-table" });
+	const table = bodyEl.createEl("table", { cls: "mtg-deck-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
 	headRow.createEl("th", { text: "Need", cls: "mtg-deck-qty" });
@@ -1538,7 +1555,8 @@ export async function renderDeckTable(
 				getSettings,
 				popover,
 				onUpdateSource,
-				transfer
+				transfer,
+				title
 			);
 		} finally {
 			containerEl.removeClass("is-updating");
@@ -1557,19 +1575,20 @@ export async function renderDeckTable(
 		null,
 		null,
 		null,
-		transfer
+		transfer,
+		settings.deckSectionsCollapsedByDefault
 	);
 	renderTableFooter(table, initialRows, "Loading…", null);
 
-	const metadataLoadingEl = containerEl.createEl("p", {
+	const metadataLoadingEl = bodyEl.createEl("p", {
 		text: `Loading deck metadata 0/${parsed.cards.length}…`,
 		cls: "mtg-card-popover-message",
 	});
-	containerEl.createEl("p", {
+	bodyEl.createEl("p", {
 		text: "Collection coverage will appear when deck metadata is ready.",
 		cls: "mtg-card-popover-message",
 	});
-	containerEl.createEl("p", {
+	bodyEl.createEl("p", {
 		text: "Deck analytics and validation will appear when deck metadata is ready.",
 		cls: "mtg-card-popover-message",
 	});
@@ -1603,11 +1622,11 @@ export async function renderDeckTable(
 			return;
 		}
 
-		containerEl.empty();
+		bodyEl.empty();
 		containerEl.removeClass("is-updating");
 		renderResolvedDeckContent(
 			app,
-			containerEl,
+			bodyEl,
 			rows,
 			coverage,
 			collectionOverview,

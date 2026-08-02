@@ -16,6 +16,10 @@ import {
 import { CollectionIndex, isPathInFolder } from "./collection/collectionIndex";
 import { COLLECTION_OVERVIEW_VIEW_TYPE, CollectionOverviewView } from "./view/collectionOverviewView";
 
+function noteTitleFromPath(path: string): string {
+	return path.split("/").pop()?.replace(/\.md$/i, "") || "";
+}
+
 export default class MtgAssistantPlugin extends Plugin {
 	settings: MTGSettings;
 	cache: CardCache;
@@ -164,7 +168,8 @@ export default class MtgAssistantPlugin extends Plugin {
 								},
 							},
 						}
-						: null
+						: null,
+					noteTitleFromPath(sourcePath)
 				);
 				continue;
 			}
@@ -180,6 +185,7 @@ export default class MtgAssistantPlugin extends Plugin {
 					cache: this.cache,
 					getSettings: () => this.settings,
 					popover: this.popover,
+					title: noteTitleFromPath(sourcePath),
 					onUpdateSource: (nextSource) => {
 						return this.updateCollectionBlockInFile(
 							sourcePath,

@@ -9,6 +9,10 @@ export interface MTGSettings {
 	collectionFolder: string;
 	removeCollectionLineAtZero: boolean;
 	commanderMarker: string;
+	deckListsCollapsedByDefault: boolean;
+	collectionListsCollapsedByDefault: boolean;
+	deckSectionsCollapsedByDefault: boolean;
+	collectionSectionsCollapsedByDefault: boolean;
 	staticCacheTTLDays: number;
 	priceCacheHours: number;
 	foilPriceSuffix: string;
@@ -32,6 +36,10 @@ export const DEFAULT_SETTINGS: MTGSettings = {
 	collectionFolder: normalizeCollectionFolderPath("collection/"),
 	removeCollectionLineAtZero: true,
 	commanderMarker: "- Commander:",
+	deckListsCollapsedByDefault: false,
+	collectionListsCollapsedByDefault: false,
+	deckSectionsCollapsedByDefault: false,
+	collectionSectionsCollapsedByDefault: false,
 	staticCacheTTLDays: 30,
 	priceCacheHours: 24,
 	foilPriceSuffix: "F",
@@ -137,6 +145,30 @@ export class MTGSettingTab extends PluginSettingTab {
 					})
 			);
 
+		new Setting(containerEl)
+			.setName("Collapse deck lists by default")
+			.setDesc("When enabled, rendered deck lists start collapsed.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deckListsCollapsedByDefault)
+					.onChange(async (value) => {
+						this.plugin.settings.deckListsCollapsedByDefault = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Collapse deck sections by default")
+			.setDesc("When enabled, rendered deck sections start collapsed.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deckSectionsCollapsedByDefault)
+					.onChange(async (value) => {
+						this.plugin.settings.deckSectionsCollapsedByDefault = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		const collectionListsSetting = new Setting(containerEl)
 			.setName("Collection lists")
 			.setHeading()
@@ -178,6 +210,30 @@ export class MTGSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.removeCollectionLineAtZero)
 					.onChange(async (value) => {
 						this.plugin.settings.removeCollectionLineAtZero = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Collapse collection lists by default")
+			.setDesc("When enabled, rendered collection lists start collapsed.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.collectionListsCollapsedByDefault)
+					.onChange(async (value) => {
+						this.plugin.settings.collectionListsCollapsedByDefault = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Collapse collection sections by default")
+			.setDesc("When enabled, rendered collection sections start collapsed.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.collectionSectionsCollapsedByDefault)
+					.onChange(async (value) => {
+						this.plugin.settings.collectionSectionsCollapsedByDefault = value;
 						await this.plugin.saveSettings();
 					})
 			);

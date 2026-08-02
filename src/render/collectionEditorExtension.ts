@@ -19,7 +19,7 @@ function isCollectionWidgetInteractiveEvent(event: Event): boolean {
 	const target = event.target;
 	return (
 		target instanceof HTMLElement &&
-		Boolean(target.closest("button, .mtg-card-ref, details, summary, a, input, select"))
+		Boolean(target.closest("button, .mtg-section-toggle, .mtg-card-ref, details, summary, a, input, select"))
 	);
 }
 
@@ -78,6 +78,7 @@ class MtgCollectionWidget extends WidgetType {
 			cache: this.cache,
 			getSettings: this.getSettings,
 			popover: this.popover,
+			title: activeFile?.basename,
 			onUpdateSource: updateSource,
 			onActivateEditor: activateEditor,
 			transfer: activeFile

@@ -8,4 +8,4 @@
   Add command palette actions for inserting card references, creating deck or collection blocks, refreshing cache, and opening external card pages.
 - Deck list upgrades:
     - mtg-deck blocks should be included in the broad collection, but mtg-deck blocks should not count the cards in other mtg-deck blocks.
-    - Add ability to collapse deck/collection list to make traversing easier (default state should be configurable)
+    - Add option to "Add new" from the transfer modal for when the user doesn't want to transfer, but wants to add cards already alotted from other sources.
