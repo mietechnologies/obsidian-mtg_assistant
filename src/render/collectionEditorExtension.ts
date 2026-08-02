@@ -79,6 +79,7 @@ class MtgCollectionWidget extends WidgetType {
 			getSettings: this.getSettings,
 			popover: this.popover,
 			title: activeFile?.basename,
+			stateKey: activeFile ? `${activeFile.path}:${lineStart}:collection` : undefined,
 			onUpdateSource: updateSource,
 			onActivateEditor: activateEditor,
 			transfer: activeFile

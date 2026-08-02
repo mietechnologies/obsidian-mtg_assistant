@@ -20,6 +20,10 @@ function noteTitleFromPath(path: string): string {
 	return path.split("/").pop()?.replace(/\.md$/i, "") || "";
 }
 
+function blockStateKey(path: string, lineStart: number, language: "deck" | "collection"): string {
+	return `${path}:${lineStart}:${language}`;
+}
+
 export default class MtgAssistantPlugin extends Plugin {
 	settings: MTGSettings;
 	cache: CardCache;
@@ -169,7 +173,8 @@ export default class MtgAssistantPlugin extends Plugin {
 							},
 						}
 						: null,
-					noteTitleFromPath(sourcePath)
+					noteTitleFromPath(sourcePath),
+					blockStateKey(sourcePath, sectionInfo?.lineStart ?? 0, "deck")
 				);
 				continue;
 			}
@@ -186,6 +191,7 @@ export default class MtgAssistantPlugin extends Plugin {
 					getSettings: () => this.settings,
 					popover: this.popover,
 					title: noteTitleFromPath(sourcePath),
+					stateKey: blockStateKey(sourcePath, sectionInfo?.lineStart ?? 0, "collection"),
 					onUpdateSource: (nextSource) => {
 						return this.updateCollectionBlockInFile(
 							sourcePath,

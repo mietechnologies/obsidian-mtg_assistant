@@ -811,7 +811,8 @@ function renderTableRows(
 	collectionTotals: CollectionTotals | null = null,
 	collectionOverview: CollectionOverview | null = null,
 	transfer: DeckTransferContext | null = null,
-	sectionsCollapsedByDefault = false
+	sectionsCollapsedByDefault = false,
+	stateKey?: string
 ): void {
 	let currentSection = "";
 	let currentSectionRows: ReturnType<typeof createCollapsibleSectionRow> | null = null;
@@ -824,7 +825,8 @@ function renderTableRows(
 				currentSection,
 				transfer ? 5 : 4,
 				"mtg-deck-section-cell",
-				sectionsCollapsedByDefault
+				sectionsCollapsedByDefault,
+				stateKey ? `${stateKey}:section:${normalizeSectionName(currentSection)}` : undefined
 			);
 			currentSectionRows.rowEl.addClass("mtg-deck-section-row");
 		}
@@ -971,7 +973,8 @@ function renderResolvedDeckContent(
 	onAdjustHave: ((row: DeckRow, currentHave: number, delta: number) => Promise<void>) | null,
 	onTransferOwned: ((row: DeckRow) => void) | null,
 	onTransferAway: ((row: DeckRow, inlineHave: number) => void) | null,
-	transfer: DeckTransferContext | null
+	transfer: DeckTransferContext | null,
+	stateKey?: string
 ): void {
 	const settings = getSettings();
 	renderUnsupportedDeckFormatWarning(containerEl, rawFormat, deckFormat);
@@ -1002,7 +1005,8 @@ function renderResolvedDeckContent(
 		coverage.collectionTotals,
 		collectionOverview,
 		transfer,
-		settings.deckSectionsCollapsedByDefault
+		settings.deckSectionsCollapsedByDefault,
+		stateKey
 	);
 	renderTableFooter(table, rows, undefined, coverage.collectionTotals);
 	renderCollectionCoverageSection(containerEl, coverage, app, cache, getSettings, popover, onRetry);
@@ -1441,7 +1445,8 @@ export async function renderDeckTable(
 	popover: MtgPopover,
 	onUpdateSource: UpdateDeckSource | null = null,
 	transfer: DeckTransferContext | null = null,
-	title?: string
+	title?: string,
+	stateKey?: string
 ): Promise<void> {
 	containerEl.empty();
 	containerEl.addClass("mtg-deck-block");
@@ -1451,8 +1456,11 @@ export async function renderDeckTable(
 	const block = createCollapsibleBlock(
 		containerEl,
 		parsed.name ?? title ?? "Deck",
-		settings.deckListsCollapsedByDefault,
-		parsed.format ? formatDeckFormatLabel(parsed.format) : undefined
+		{
+			collapsedByDefault: settings.deckListsCollapsedByDefault,
+			meta: parsed.format ? formatDeckFormatLabel(parsed.format) : undefined,
+			stateKey,
+		}
 	);
 	const bodyEl = block.bodyEl;
 	if (parsed.cards.length === 0) {
@@ -1556,7 +1564,8 @@ export async function renderDeckTable(
 				popover,
 				onUpdateSource,
 				transfer,
-				title
+				title,
+				stateKey
 			);
 		} finally {
 			containerEl.removeClass("is-updating");
@@ -1576,7 +1585,8 @@ export async function renderDeckTable(
 		null,
 		null,
 		transfer,
-		settings.deckSectionsCollapsedByDefault
+		settings.deckSectionsCollapsedByDefault,
+		stateKey
 	);
 	renderTableFooter(table, initialRows, "Loading…", null);
 
@@ -1641,7 +1651,8 @@ export async function renderDeckTable(
 			onAdjustHave,
 			onTransferOwned,
 			onTransferAway,
-			transfer
+			transfer,
+			stateKey
 		);
 	});
 }

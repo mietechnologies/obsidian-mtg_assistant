@@ -266,7 +266,21 @@ function updateDeckSource(source: string, cardName: string, delta: number): stri
 	const targetKey = normalizeCardKey(cardName);
 
 	for (let index = 0; index < lines.length; index += 1) {
-		const parsed = parseCardLine(lines[index] ?? "");
+		const line = lines[index] ?? "";
+		const commanderMatch = /^(\s*commander\s*:\s*)(.+?)(\s*)$/i.exec(line);
+		if (commanderMatch?.[2]) {
+			const parsedCommander = parseHaveMetadata(commanderMatch[2]);
+			if (normalizeCardKey(parsedCommander.cardText) !== targetKey) {
+				continue;
+			}
+
+			const nextHave = Math.max(0, (parsedCommander.have ?? 0) + delta);
+			lines[index] =
+				`${commanderMatch[1]}${formatDeckCardText(parsedCommander.cardText, nextHave)}${commanderMatch[3] ?? ""}`;
+			return lines.join("\n");
+		}
+
+		const parsed = parseCardLine(line);
 		if (!parsed || normalizeCardKey(parsed.cardText) !== targetKey) {
 			continue;
 		}

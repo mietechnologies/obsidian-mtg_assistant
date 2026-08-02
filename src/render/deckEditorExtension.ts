@@ -98,7 +98,8 @@ class MtgDeckWidget extends WidgetType {
 					},
 				}
 				: null,
-			activeFile?.basename
+			activeFile?.basename,
+			activeFile ? `${activeFile.path}:${lineStart}:deck` : undefined
 		);
 		return container;
 	}

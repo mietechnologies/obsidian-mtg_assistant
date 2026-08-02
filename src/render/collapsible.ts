@@ -4,17 +4,24 @@ export interface CollapsibleBlock {
 	setMeta(meta: string | undefined): void;
 }
 
+export interface CollapsibleBlockOptions {
+	collapsedByDefault: boolean;
+	meta?: string;
+	stateKey?: string;
+}
+
 export interface CollapsibleSection {
 	rowEl: HTMLTableRowElement;
 	cellEl: HTMLTableCellElement;
 	addRow(row: HTMLTableRowElement): void;
 }
 
+const COLLAPSED_STATE = new Map<string, boolean>();
+
 export function createCollapsibleBlock(
 	containerEl: HTMLElement,
 	title: string,
-	collapsedByDefault: boolean,
-	meta?: string
+	options: CollapsibleBlockOptions
 ): CollapsibleBlock {
 	const titleButton = containerEl.createEl("button", { cls: "mtg-block-title-button" });
 	titleButton.type = "button";
@@ -26,7 +33,10 @@ export function createCollapsibleBlock(
 		cls: "mtg-block-title-meta",
 	});
 	const bodyEl = containerEl.createEl("div", { cls: "mtg-block-body" });
-	let collapsed = collapsedByDefault;
+	let meta = options.meta;
+	let collapsed = options.stateKey
+		? COLLAPSED_STATE.get(options.stateKey) ?? options.collapsedByDefault
+		: options.collapsedByDefault;
 
 	const render = (): void => {
 		titleButton.setAttribute("aria-expanded", collapsed ? "false" : "true");
@@ -39,6 +49,9 @@ export function createCollapsibleBlock(
 		event.preventDefault();
 		event.stopPropagation();
 		collapsed = !collapsed;
+		if (options.stateKey) {
+			COLLAPSED_STATE.set(options.stateKey, collapsed);
+		}
 		render();
 	});
 	render();
@@ -60,7 +73,8 @@ export function createCollapsibleSectionRow(
 	title: string,
 	colSpan: number,
 	cellClassName: string,
-	collapsedByDefault: boolean
+	collapsedByDefault: boolean,
+	stateKey?: string
 ): CollapsibleSection {
 	const sectionRows: HTMLTableRowElement[] = [];
 	const rowEl = tableBody.createEl("tr", { cls: "mtg-section-row" });
@@ -71,7 +85,9 @@ export function createCollapsibleSectionRow(
 	rowEl.setAttribute("role", "button");
 
 	cellEl.createEl("span", { text: title, cls: "mtg-section-toggle-text" });
-	let collapsed = collapsedByDefault;
+	let collapsed = stateKey
+		? COLLAPSED_STATE.get(stateKey) ?? collapsedByDefault
+		: collapsedByDefault;
 
 	const render = (): void => {
 		rowEl.setAttribute("aria-expanded", collapsed ? "false" : "true");
@@ -85,6 +101,9 @@ export function createCollapsibleSectionRow(
 		event.preventDefault();
 		event.stopPropagation();
 		collapsed = !collapsed;
+		if (stateKey) {
+			COLLAPSED_STATE.set(stateKey, collapsed);
+		}
 		render();
 	};
 

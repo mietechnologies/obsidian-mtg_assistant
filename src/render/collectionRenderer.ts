@@ -31,6 +31,7 @@ interface RenderCollectionTableOptions {
 	onUpdateSource: (nextSource: string) => void | Promise<void>;
 	onActivateEditor?: () => void;
 	title?: string;
+	stateKey?: string;
 	transfer?: {
 		app: App;
 		source: TransferSourceContext;
@@ -262,7 +263,8 @@ function renderCollectionRows(
 	onRetry: (cardName: string) => Promise<void>,
 	transfer: RenderCollectionTableOptions["transfer"],
 	ownershipRefsByKey: Map<string, OwnershipBlockRef[]>,
-	sectionsCollapsedByDefault: boolean
+	sectionsCollapsedByDefault: boolean,
+	stateKey?: string
 ): void {
 	let currentSection = "";
 	let currentSectionRows: ReturnType<typeof createCollapsibleSectionRow> | null = null;
@@ -289,7 +291,8 @@ function renderCollectionRows(
 				currentSection,
 				transfer ? 5 : 4,
 				"mtg-collection-section-cell",
-				sectionsCollapsedByDefault
+				sectionsCollapsedByDefault,
+				stateKey ? `${stateKey}:section:${currentSection.trim().toLowerCase()}` : undefined
 			);
 			currentSectionRows.rowEl.addClass("mtg-collection-section-row");
 		}
@@ -334,6 +337,7 @@ export async function renderCollectionTable(
 		onUpdateSource,
 		onActivateEditor,
 		title,
+		stateKey,
 		transfer,
 	} = options;
 	containerEl.empty();
@@ -344,7 +348,10 @@ export async function renderCollectionTable(
 	const block = createCollapsibleBlock(
 		containerEl,
 		parsed.name ?? title ?? "Collection",
-		settings.collectionListsCollapsedByDefault
+		{
+			collapsedByDefault: settings.collectionListsCollapsedByDefault,
+			stateKey,
+		}
 	);
 	const bodyEl = block.bodyEl;
 	if (parsed.cards.length === 0) {
@@ -441,7 +448,8 @@ export async function renderCollectionTable(
 		onRetry,
 		transfer,
 		ownershipRefsByKey,
-		settings.collectionSectionsCollapsedByDefault
+		settings.collectionSectionsCollapsedByDefault,
+		stateKey
 	);
 
 	void mapCollectionRows(parsed.cards, cache, (completed, total) => {
@@ -477,7 +485,8 @@ export async function renderCollectionTable(
 			onRetry,
 			transfer,
 			ownershipRefsByKey,
-			getSettings().collectionSectionsCollapsedByDefault
+			getSettings().collectionSectionsCollapsedByDefault,
+			stateKey
 		);
 	});
 }
