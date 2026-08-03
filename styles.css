@@ -266,9 +266,9 @@ tr.is-collapsed {
 	text-align: left;
 }
 
-.mtg-deck-table th:last-child,
-.mtg-deck-table td:last-child,
-.mtg-deck-price {
+.mtg-deck-price,
+.mtg-transfer-header,
+.mtg-transfer-cell {
 	text-align: right;
 }
 

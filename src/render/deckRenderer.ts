@@ -969,8 +969,8 @@ function renderResolvedDeckContent(
 	app: App,
 	containerEl: HTMLElement,
 	rows: DeckRow[],
-	coverage: DeckCollectionCoverage,
-	collectionOverview: CollectionOverview,
+	coverage: DeckCollectionCoverage | null,
+	collectionOverview: CollectionOverview | null,
 	analytics: DeckAnalytics,
 	validationIssues: DeckValidationIssue[],
 	deckFormat: DeckFormat | null,
@@ -984,6 +984,7 @@ function renderResolvedDeckContent(
 	onTransferAway: ((row: DeckRow, inlineHave: number) => void) | null,
 	transfer: DeckTransferContext | null,
 	showPrice: boolean,
+	showCollectionCoverage: boolean,
 	stateKey?: string
 ): void {
 	const settings = getSettings();
@@ -1014,15 +1015,17 @@ function renderResolvedDeckContent(
 		onAdjustHave,
 		onTransferOwned,
 		onTransferAway,
-		coverage.collectionTotals,
-		collectionOverview,
+		showCollectionCoverage ? coverage?.collectionTotals ?? null : null,
+		showCollectionCoverage ? collectionOverview : null,
 		transfer,
 		showPrice,
 		settings.deckSectionsCollapsedByDefault,
 		stateKey
 	);
 	renderTableFooter(table, rows, undefined, showPrice);
-	renderCollectionCoverageSection(containerEl, coverage, app, cache, getSettings, popover, onRetry);
+	if (showCollectionCoverage && coverage) {
+		renderCollectionCoverageSection(containerEl, coverage, app, cache, getSettings, popover, onRetry);
+	}
 	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, rawFormat);
 }
 
@@ -1486,8 +1489,11 @@ export async function renderDeckTable(
 
 	const deckFormat = normalizeDeckFormat(parsed.format);
 	const showPrice = !parsed.digitalOnly;
+	const showCollectionCoverage = !parsed.digitalOnly;
 	const activeTransfer = parsed.digitalOnly ? null : transfer;
-	const collectionOverviewPromise = collectionIndex.loadOverview();
+	const collectionOverviewPromise = showCollectionCoverage || activeTransfer
+		? collectionIndex.loadOverview()
+		: Promise.resolve(null);
 	containerEl.removeClass("is-updating");
 	const renderToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	containerEl.setAttribute(DECK_RENDER_TOKEN_ATTR, renderToken);
@@ -1511,6 +1517,10 @@ export async function renderDeckTable(
 		activeTransfer
 			? (row: DeckRow): void => {
 				void collectionOverviewPromise.then((collectionOverview) => {
+					if (!collectionOverview) {
+						return;
+					}
+
 					const sources = buildCollectionSourceOptions(row, collectionOverview);
 					if (sources.length === 0) {
 						return;
@@ -1612,10 +1622,12 @@ export async function renderDeckTable(
 		text: `Loading deck metadata 0/${parsed.cards.length}…`,
 		cls: "mtg-card-popover-message",
 	});
-	bodyEl.createEl("p", {
-		text: "Collection coverage will appear when deck metadata is ready.",
-		cls: "mtg-card-popover-message",
-	});
+	if (showCollectionCoverage) {
+		bodyEl.createEl("p", {
+			text: "Collection coverage will appear when deck metadata is ready.",
+			cls: "mtg-card-popover-message",
+		});
+	}
 	bodyEl.createEl("p", {
 		text: "Deck analytics and validation will appear when deck metadata is ready.",
 		cls: "mtg-card-popover-message",
@@ -1635,12 +1647,16 @@ export async function renderDeckTable(
 				: `Loading deck metadata ${completed}/${total}…`;
 	}).then(async (rows) => {
 		const collectionOverview = await collectionOverviewPromise;
-		const collectionTotals = {
-			quantities: collectionOverview.quantities,
-			sourceFileCount: collectionOverview.sourceFileCount,
-			sourceBlockCount: collectionOverview.sourceBlockCount,
-		};
-		const coverage = await buildDeckCollectionCoverage(rows, collectionTotals);
+		const collectionTotals = collectionOverview
+			? {
+				quantities: collectionOverview.quantities,
+				sourceFileCount: collectionOverview.sourceFileCount,
+				sourceBlockCount: collectionOverview.sourceBlockCount,
+			}
+			: null;
+		const coverage = collectionTotals
+			? await buildDeckCollectionCoverage(rows, collectionTotals)
+			: null;
 		const analytics = buildDeckAnalytics(rows);
 		const validationIssues = buildDeckValidation(rows, deckFormat);
 		if (
@@ -1671,6 +1687,7 @@ export async function renderDeckTable(
 			onTransferAway,
 			activeTransfer,
 			showPrice,
+			showCollectionCoverage,
 			stateKey
 		);
 	});

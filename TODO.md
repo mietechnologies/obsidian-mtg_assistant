@@ -8,5 +8,3 @@
   Add command palette actions for inserting card references, creating deck or collection blocks, refreshing cache, and opening external card pages.
 - Deck list upgrades:
     - Possibly add the ability to "breakdown" a deck, allowing the user the opportunity to move all cards from a deck list to a collection list or other deck.
-    - Card names on digital-only lists should be left-aligned.
-    - Cards in a digital-only list should not consider any cards in the physical collection.
