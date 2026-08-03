@@ -7,4 +7,4 @@
 - Commands and quick actions:
   Add command palette actions for inserting card references, creating deck or collection blocks, refreshing cache, and opening external card pages.
 - Deck list upgrades:
-    - Add metadata field to imply digital-only deck which won't be counted toward the physical collection.
+    - Possibly add the ability to "breakdown" a deck, allowing the user the opportunity to move all cards from a deck list to a collection list or other deck.

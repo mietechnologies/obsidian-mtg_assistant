@@ -9,6 +9,7 @@ export interface ParsedDeck {
 	cards: ParsedDeckCard[];
 	name?: string;
 	format?: string;
+	digitalOnly?: boolean;
 }
 
 interface ParsedSectionLabel {
@@ -156,6 +157,32 @@ function parseNameLine(line: string): string | null {
 	return match[1].trim();
 }
 
+function parseBooleanMetadataValue(value: string): boolean | null {
+	const normalized = value.trim().toLowerCase();
+	if (["true", "yes", "y", "1", "on"].includes(normalized)) {
+		return true;
+	}
+	if (["false", "no", "n", "0", "off"].includes(normalized)) {
+		return false;
+	}
+	return null;
+}
+
+function parseDigitalOnlyLine(line: string): boolean | null {
+	const digitalMatch = /^(?:digital|digital-only|digital_only)\s*:\s*(.+?)\s*$/i.exec(line);
+	if (digitalMatch?.[1]) {
+		return parseBooleanMetadataValue(digitalMatch[1]);
+	}
+
+	const physicalMatch = /^physical\s*:\s*(.+?)\s*$/i.exec(line);
+	if (physicalMatch?.[1]) {
+		const physical = parseBooleanMetadataValue(physicalMatch[1]);
+		return physical === null ? null : !physical;
+	}
+
+	return null;
+}
+
 function parseCommanderLine(line: string, parseInlineHave: boolean): ParsedDeckCard | null {
 	const match = /^commander\s*:\s*(.+?)\s*$/i.exec(line);
 	if (!match?.[1]) {
@@ -187,6 +214,7 @@ function parseCardList(
 	let parsedCardsInCurrentSection = 0;
 	let name: string | undefined;
 	let format: string | undefined;
+	let digitalOnly = false;
 
 	for (const rawLine of source.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -208,6 +236,12 @@ function parseCardList(
 		const parsedFormat = parseFormatLine(line);
 		if (parsedFormat) {
 			format = parsedFormat;
+			continue;
+		}
+
+		const parsedDigitalOnly = parseDigitalOnlyLine(line);
+		if (parsedDigitalOnly !== null) {
+			digitalOnly = parsedDigitalOnly;
 			continue;
 		}
 
@@ -262,6 +296,7 @@ function parseCardList(
 		cards: Array.from(cards.values()),
 		name,
 		format,
+		digitalOnly,
 	};
 }
 

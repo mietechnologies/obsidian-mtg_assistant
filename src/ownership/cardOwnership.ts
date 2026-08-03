@@ -102,6 +102,9 @@ export async function loadOwnershipRefsForCards(
 				const parsed = language === "deck"
 					? parseDeckList(source, settings.commanderMarker)
 					: parseCollectionList(source);
+				if (language === "deck" && parsed.digitalOnly) {
+					continue;
+				}
 
 				for (const card of parsed.cards) {
 					const key = normalizeCardKey(card.cardName);
@@ -128,4 +131,3 @@ export async function loadOwnershipRefsForCards(
 
 	return refsByKey;
 }
-

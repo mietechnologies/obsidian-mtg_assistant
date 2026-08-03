@@ -326,6 +326,17 @@ function formatDeckFormatLabel(format: string): string {
 		.join(" ");
 }
 
+function buildDeckTitleMeta(format: string | undefined, digitalOnly: boolean | undefined): string | undefined {
+	const parts: string[] = [];
+	if (format) {
+		parts.push(formatDeckFormatLabel(format));
+	}
+	if (digitalOnly) {
+		parts.push("Digital");
+	}
+	return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
 function normalizeDeckFormat(format: string | undefined): DeckFormat | null {
 	if (!format) {
 		return null;
@@ -811,6 +822,7 @@ function renderTableRows(
 	collectionTotals: CollectionTotals | null = null,
 	collectionOverview: CollectionOverview | null = null,
 	transfer: DeckTransferContext | null = null,
+	showPrice = true,
 	sectionsCollapsedByDefault = false,
 	stateKey?: string
 ): void {
@@ -823,7 +835,7 @@ function renderTableRows(
 			currentSectionRows = createCollapsibleSectionRow(
 				tableBody,
 				currentSection,
-				transfer ? 5 : 4,
+				3 + (showPrice ? 1 : 0) + (transfer ? 1 : 0),
 				"mtg-deck-section-cell",
 				sectionsCollapsedByDefault,
 				stateKey ? `${stateKey}:section:${normalizeSectionName(currentSection)}` : undefined
@@ -860,7 +872,9 @@ function renderTableRows(
 				ownershipRefs
 			)
 		);
-		tr.createEl("td", { text: row.priceText, cls: "mtg-deck-price" });
+		if (showPrice) {
+			tr.createEl("td", { text: row.priceText, cls: "mtg-deck-price" });
+		}
 		if (transfer) {
 			const actionCell = tr.createEl("td", { cls: "mtg-transfer-cell" });
 			actionCell.appendChild(
@@ -910,7 +924,8 @@ function renderTableFooter(
 	table: HTMLElement,
 	rows: DeckRow[],
 	totalTextOverride?: string,
-	collectionTotals: CollectionTotals | null = null
+	collectionTotals: CollectionTotals | null = null,
+	showPrice = true
 ): void {
 	const totals = calculateTotals(rows);
 	const coveredQuantity = calculateCoveredQuantity(rows, collectionTotals);
@@ -928,10 +943,12 @@ function renderTableFooter(
 		text: "Total",
 		cls: "mtg-deck-footer-cell",
 	});
-	footerRow.createEl("td", {
-		text: totalTextOverride ?? formatDeckTotal(totals),
-		cls: "mtg-deck-price mtg-deck-footer-cell",
-	});
+	if (showPrice) {
+		footerRow.createEl("td", {
+			text: totalTextOverride ?? formatDeckTotal(totals),
+			cls: "mtg-deck-price mtg-deck-footer-cell",
+		});
+	}
 }
 
 function renderUnsupportedDeckFormatWarning(
@@ -974,6 +991,7 @@ function renderResolvedDeckContent(
 	onTransferOwned: ((row: DeckRow) => void) | null,
 	onTransferAway: ((row: DeckRow, inlineHave: number) => void) | null,
 	transfer: DeckTransferContext | null,
+	showPrice: boolean,
 	stateKey?: string
 ): void {
 	const settings = getSettings();
@@ -985,7 +1003,9 @@ function renderResolvedDeckContent(
 	headRow.createEl("th", { text: "Need", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Have", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Card" });
-	headRow.createEl("th", { text: "Current price", cls: "mtg-deck-price" });
+	if (showPrice) {
+		headRow.createEl("th", { text: "Current price", cls: "mtg-deck-price" });
+	}
 	if (transfer) {
 		headRow.createEl("th", { cls: "mtg-transfer-header" });
 	}
@@ -1005,10 +1025,11 @@ function renderResolvedDeckContent(
 		coverage.collectionTotals,
 		collectionOverview,
 		transfer,
+		showPrice,
 		settings.deckSectionsCollapsedByDefault,
 		stateKey
 	);
-	renderTableFooter(table, rows, undefined, coverage.collectionTotals);
+	renderTableFooter(table, rows, undefined, coverage.collectionTotals, showPrice);
 	renderCollectionCoverageSection(containerEl, coverage, app, cache, getSettings, popover, onRetry);
 	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, rawFormat);
 }
@@ -1458,7 +1479,7 @@ export async function renderDeckTable(
 		parsed.name ?? title ?? "Deck",
 		{
 			collapsedByDefault: settings.deckListsCollapsedByDefault,
-			meta: parsed.format ? formatDeckFormatLabel(parsed.format) : undefined,
+			meta: buildDeckTitleMeta(parsed.format, parsed.digitalOnly),
 			stateKey,
 		}
 	);
@@ -1472,6 +1493,8 @@ export async function renderDeckTable(
 	}
 
 	const deckFormat = normalizeDeckFormat(parsed.format);
+	const showPrice = !parsed.digitalOnly;
+	const activeTransfer = parsed.digitalOnly ? null : transfer;
 	const collectionOverviewPromise = collectionIndex.loadOverview();
 	containerEl.removeClass("is-updating");
 	const renderToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1493,7 +1516,7 @@ export async function renderDeckTable(
 		}
 		: null;
 	const onTransferOwned =
-		transfer
+		activeTransfer
 			? (row: DeckRow): void => {
 				void collectionOverviewPromise.then((collectionOverview) => {
 					const sources = buildCollectionSourceOptions(row, collectionOverview);
@@ -1502,11 +1525,11 @@ export async function renderDeckTable(
 					}
 
 					const target: FixedTransferTarget = {
-						path: transfer.source.path,
-						lineStart: transfer.source.lineStart,
+						path: activeTransfer.source.path,
+						lineStart: activeTransfer.source.lineStart,
 						language: "deck",
 						source,
-						label: buildDeckTargetLabel(transfer.source),
+						label: buildDeckTargetLabel(activeTransfer.source),
 					};
 					new CardTransferToTargetModal(
 						app,
@@ -1514,19 +1537,19 @@ export async function renderDeckTable(
 						row.cardName,
 						sources,
 						target,
-						transfer.source.onTransferComplete
+						activeTransfer.source.onTransferComplete
 					).open();
 				});
 			}
 			: null;
 	const onTransferAway =
-		transfer
+		activeTransfer
 			? (row: DeckRow, inlineHave: number): void => {
 				new CardTransferModal(
 					app,
 					getSettings(),
 					{
-						source: transfer.source,
+						source: activeTransfer.source,
 						cardName: row.cardName,
 						availableQuantity: inlineHave,
 					},
@@ -1544,8 +1567,10 @@ export async function renderDeckTable(
 	headRow.createEl("th", { text: "Need", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Have", cls: "mtg-deck-qty" });
 	headRow.createEl("th", { text: "Card" });
-	headRow.createEl("th", { text: "Current price", cls: "mtg-deck-price" });
-	if (transfer) {
+	if (showPrice) {
+		headRow.createEl("th", { text: "Current price", cls: "mtg-deck-price" });
+	}
+	if (activeTransfer) {
 		headRow.createEl("th", { cls: "mtg-transfer-header" });
 	}
 
@@ -1584,11 +1609,12 @@ export async function renderDeckTable(
 		null,
 		null,
 		null,
-		transfer,
+		activeTransfer,
+		showPrice,
 		settings.deckSectionsCollapsedByDefault,
 		stateKey
 	);
-	renderTableFooter(table, initialRows, "Loading…", null);
+	renderTableFooter(table, initialRows, "Loading…", null, showPrice);
 
 	const metadataLoadingEl = bodyEl.createEl("p", {
 		text: `Loading deck metadata 0/${parsed.cards.length}…`,
@@ -1651,7 +1677,8 @@ export async function renderDeckTable(
 			onAdjustHave,
 			onTransferOwned,
 			onTransferAway,
-			transfer,
+			activeTransfer,
+			showPrice,
 			stateKey
 		);
 	});
