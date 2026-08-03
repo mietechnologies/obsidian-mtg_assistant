@@ -38,17 +38,28 @@
 	pointer-events: none;
 }
 
+.mtg-block-title-row {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	margin: 1rem 0 0.85rem;
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
 .mtg-block-title-button {
 	display: flex;
 	align-items: center;
 	justify-content: flex-start;
 	gap: 0.55rem;
-	width: 100%;
-	margin: 1rem 0 0.85rem;
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
 	padding: 0.85rem 0.75rem;
 	border: none;
-	border-bottom: 1px solid var(--background-modifier-border);
-	background: var(--background-secondary);
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
 	color: var(--text-normal);
 	font-size: 1.05em;
 	font-weight: 700;
@@ -73,6 +84,7 @@
 
 .mtg-block-title-button:hover,
 .mtg-block-title-button:focus-visible {
+	background: transparent;
 	color: var(--text-accent);
 }
 
@@ -99,6 +111,39 @@
 
 .mtg-block-title-meta.is-empty {
 	display: none;
+}
+
+.mtg-block-title-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	flex: 0 0 auto;
+	padding: 0 0.5rem 0 0;
+}
+
+.mtg-block-action-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.mtg-block-action-button:hover,
+.mtg-block-action-button:focus-visible {
+	background: var(--background-modifier-hover);
+	color: var(--text-accent);
+}
+
+.mtg-block-action-button svg {
+	width: 1rem;
+	height: 1rem;
 }
 
 .mtg-block-body.is-collapsed,
@@ -373,6 +418,10 @@ tr.is-collapsed {
 	gap: 0.85rem;
 }
 
+.mtg-breakdown-modal-container {
+	width: min(92vw, 42rem);
+}
+
 .mtg-transfer-card-name {
 	margin: 0;
 	font-weight: 700;
@@ -400,6 +449,57 @@ tr.is-collapsed {
 	justify-content: flex-end;
 	gap: 0.5rem;
 	margin-top: 0.25rem;
+}
+
+.mtg-breakdown-assignments {
+	max-height: min(48vh, 28rem);
+	overflow: auto;
+}
+
+.mtg-breakdown-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.mtg-breakdown-table th,
+.mtg-breakdown-table td {
+	padding: 0.35rem 0.45rem;
+	border-bottom: 1px solid var(--background-modifier-border);
+	text-align: left;
+	vertical-align: middle;
+}
+
+.mtg-breakdown-table th {
+	color: var(--text-muted);
+	font-size: 0.85em;
+	font-weight: 600;
+}
+
+.mtg-breakdown-qty {
+	width: 3rem;
+	color: var(--text-muted);
+	text-align: center !important;
+}
+
+.mtg-breakdown-price {
+	width: 6.5rem;
+	text-align: right !important;
+	white-space: nowrap;
+}
+
+.mtg-breakdown-color {
+	width: 4rem;
+	text-align: center !important;
+	white-space: nowrap;
+}
+
+.mtg-breakdown-color .mtg-color-identity {
+	justify-content: center;
+}
+
+.mtg-breakdown-table select {
+	width: 100%;
+	min-width: 12rem;
 }
 
 .mtg-deck-validation-message {

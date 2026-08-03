@@ -1,4 +1,5 @@
 export interface CollapsibleBlock {
+	actionsEl: HTMLElement;
 	bodyEl: HTMLElement;
 	setTitle(title: string): void;
 	setMeta(meta: string | undefined): void;
@@ -23,7 +24,8 @@ export function createCollapsibleBlock(
 	title: string,
 	options: CollapsibleBlockOptions
 ): CollapsibleBlock {
-	const titleButton = containerEl.createEl("button", { cls: "mtg-block-title-button" });
+	const titleRow = containerEl.createEl("div", { cls: "mtg-block-title-row" });
+	const titleButton = titleRow.createEl("button", { cls: "mtg-block-title-button" });
 	titleButton.type = "button";
 	const titleEl = titleButton.createEl("span", {
 		text: title,
@@ -32,6 +34,7 @@ export function createCollapsibleBlock(
 	const metaEl = titleButton.createEl("span", {
 		cls: "mtg-block-title-meta",
 	});
+	const actionsEl = titleRow.createEl("div", { cls: "mtg-block-title-actions" });
 	const bodyEl = containerEl.createEl("div", { cls: "mtg-block-body" });
 	let meta = options.meta;
 	let collapsed = options.stateKey
@@ -57,6 +60,7 @@ export function createCollapsibleBlock(
 	render();
 
 	return {
+		actionsEl,
 		bodyEl,
 		setTitle(nextTitle: string): void {
 			titleEl.textContent = nextTitle;

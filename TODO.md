@@ -6,5 +6,5 @@
   Add inline completion for `[mtg:...]` references to reduce typos and speed up entry.
 - Commands and quick actions:
   Add command palette actions for inserting card references, creating deck or collection blocks, refreshing cache, and opening external card pages.
-- Deck list upgrades:
-    - Possibly add the ability to "breakdown" a deck, allowing the user the opportunity to move all cards from a deck list to a collection list or other deck.
+
+## Bug Fixes and Feature Improvements (DO NOT DELETE THIS LINE)

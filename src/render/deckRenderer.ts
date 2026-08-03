@@ -14,11 +14,13 @@ import { createInlineWarning, createRateLimitWarning } from "./lookupWarning";
 import {
 	CardTransferModal,
 	CardTransferToTargetModal,
+	createDeckBreakdownButton,
 	createTransferButton,
 	FixedTransferTarget,
 	TransferSourceContext,
 	TransferSourceOption,
 } from "../transfer/cardTransfer";
+import type { DeckBreakdownCardDetails } from "../transfer/cardTransfer";
 
 type DeckFormat = "standard" | "pioneer" | "modern" | "pauper" | "commander" | "brawl" | "duel" | "oathbreaker" | "legacy" | "vintage";
 type DeckLegalityStatus = "legal" | "not_legal" | "banned" | "restricted" | null;
@@ -239,23 +241,36 @@ function updateDeckHaveSource(
 		}
 
 		const cardMatch = /^(\s*(?:[-*+]\s+)?)(\d+)(\s*[xX]?\s+)(.+?)(\s*)$/.exec(line);
-		if (!cardMatch?.[2] || !cardMatch[4]) {
+		if (cardMatch?.[2] && cardMatch[4]) {
+			const quantity = Number.parseInt(cardMatch[2], 10);
+			if (!Number.isFinite(quantity) || quantity < 0) {
+				continue;
+			}
+
+			const parsed = parseHaveMetadata(cardMatch[4]);
+			if (!targetKeys.has(normalizeSourceCardName(parsed.cardText))) {
+				continue;
+			}
+
+			const nextHave = clampHave((parsed.have ?? currentHave) + delta, quantity);
+			lines[index] =
+				`${cardMatch[1] ?? ""}${quantity}${cardMatch[3] ?? " "}${formatDeckCardText(parsed.cardText, nextHave)}${cardMatch[5] ?? ""}`;
+			return lines.join("\n");
+		}
+
+		const implicitCardMatch = /^(\s*(?:[-*+]\s+)?)(.+?)(\s*)$/.exec(line);
+		if (!implicitCardMatch?.[2]) {
 			continue;
 		}
 
-		const quantity = Number.parseInt(cardMatch[2], 10);
-		if (!Number.isFinite(quantity) || quantity < 0) {
-			continue;
-		}
-
-		const parsed = parseHaveMetadata(cardMatch[4]);
+		const parsed = parseHaveMetadata(implicitCardMatch[2]);
 		if (!targetKeys.has(normalizeSourceCardName(parsed.cardText))) {
 			continue;
 		}
 
-		const nextHave = clampHave((parsed.have ?? currentHave) + delta, quantity);
+		const nextHave = clampHave((parsed.have ?? currentHave) + delta, 1);
 		lines[index] =
-			`${cardMatch[1] ?? ""}${quantity}${cardMatch[3] ?? " "}${formatDeckCardText(parsed.cardText, nextHave)}${cardMatch[5] ?? ""}`;
+			`${implicitCardMatch[1] ?? ""}${formatDeckCardText(parsed.cardText, nextHave)}${implicitCardMatch[3] ?? ""}`;
 		return lines.join("\n");
 	}
 
@@ -1469,15 +1484,27 @@ export async function renderDeckTable(
 
 	const settings = getSettings();
 	const parsed = parseDeckList(source, settings.commanderMarker);
+	const deckTitle = parsed.name ?? title ?? "Deck";
+	let deckBreakdownCardDetails: DeckBreakdownCardDetails[] = [];
 	const block = createCollapsibleBlock(
 		containerEl,
-		parsed.name ?? title ?? "Deck",
+		deckTitle,
 		{
 			collapsedByDefault: settings.deckListsCollapsedByDefault,
 			meta: buildDeckTitleMeta(parsed.format, parsed.digitalOnly),
 			stateKey,
 		}
 	);
+	if (transfer) {
+		block.actionsEl.appendChild(
+			createDeckBreakdownButton(app, settings, {
+				source: transfer.source,
+				deckName: deckTitle,
+				digitalOnly: parsed.digitalOnly ?? false,
+				getCardDetails: () => deckBreakdownCardDetails,
+			})
+		);
+	}
 	const bodyEl = block.bodyEl;
 	if (parsed.cards.length === 0) {
 		bodyEl.createEl("p", {
@@ -1563,6 +1590,11 @@ export async function renderDeckTable(
 	renderUnsupportedDeckFormatWarning(bodyEl, parsed.format, deckFormat);
 
 	const initialRows = createInitialDeckRows(parsed.cards);
+	deckBreakdownCardDetails = initialRows.map((row) => ({
+		cardName: row.lookupName,
+		unitPrice: row.priceValue,
+		colorIdentity: row.colorIdentity,
+	}));
 	const table = bodyEl.createEl("table", { cls: "mtg-deck-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
@@ -1646,6 +1678,11 @@ export async function renderDeckTable(
 				? "Finalizing deck metadata…"
 				: `Loading deck metadata ${completed}/${total}…`;
 	}).then(async (rows) => {
+		deckBreakdownCardDetails = rows.map((row) => ({
+			cardName: row.lookupName,
+			unitPrice: row.priceValue,
+			colorIdentity: row.colorIdentity,
+		}));
 		const collectionOverview = await collectionOverviewPromise;
 		const collectionTotals = collectionOverview
 			? {
