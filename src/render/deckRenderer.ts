@@ -906,17 +906,10 @@ function calculateTotals(rows: DeckRow[]): DeckTotals {
 	return { totalQuantity, totalPrice, hasEstimatedPrices };
 }
 
-function calculateCoveredQuantity(
-	rows: DeckRow[],
-	collectionTotals: CollectionTotals | null
-): number | null {
-	if (!collectionTotals) {
-		return null;
-	}
-
+function calculateInlineHaveQuantity(rows: DeckRow[]): number {
 	return rows.reduce((sum, row) => {
-		const owned = getOwnedQuantity(row, collectionTotals) ?? 0;
-		return sum + Math.min(row.quantity, owned);
+		const inlineHave = clampHave(row.have ?? 0, row.quantity);
+		return sum + inlineHave;
 	}, 0);
 }
 
@@ -924,11 +917,10 @@ function renderTableFooter(
 	table: HTMLElement,
 	rows: DeckRow[],
 	totalTextOverride?: string,
-	collectionTotals: CollectionTotals | null = null,
 	showPrice = true
 ): void {
 	const totals = calculateTotals(rows);
-	const coveredQuantity = calculateCoveredQuantity(rows, collectionTotals);
+	const inlineHaveQuantity = calculateInlineHaveQuantity(rows);
 	const tfoot = table.createEl("tfoot");
 	const footerRow = tfoot.createEl("tr", { cls: "mtg-deck-footer-row" });
 	footerRow.createEl("td", {
@@ -936,7 +928,7 @@ function renderTableFooter(
 		cls: "mtg-deck-qty mtg-deck-footer-cell",
 	});
 	footerRow.createEl("td", {
-		text: coveredQuantity === null ? "..." : String(coveredQuantity),
+		text: String(inlineHaveQuantity),
 		cls: "mtg-deck-qty mtg-deck-footer-cell",
 	});
 	footerRow.createEl("td", {
@@ -1029,7 +1021,7 @@ function renderResolvedDeckContent(
 		settings.deckSectionsCollapsedByDefault,
 		stateKey
 	);
-	renderTableFooter(table, rows, undefined, coverage.collectionTotals, showPrice);
+	renderTableFooter(table, rows, undefined, showPrice);
 	renderCollectionCoverageSection(containerEl, coverage, app, cache, getSettings, popover, onRetry);
 	renderDeckAnalyticsSection(containerEl, analytics, validationIssues, deckFormat, rawFormat);
 }
@@ -1614,7 +1606,7 @@ export async function renderDeckTable(
 		settings.deckSectionsCollapsedByDefault,
 		stateKey
 	);
-	renderTableFooter(table, initialRows, "Loading…", null, showPrice);
+	renderTableFooter(table, initialRows, "Loading…", showPrice);
 
 	const metadataLoadingEl = bodyEl.createEl("p", {
 		text: `Loading deck metadata 0/${parsed.cards.length}…`,
