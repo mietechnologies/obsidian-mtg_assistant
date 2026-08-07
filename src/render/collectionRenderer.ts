@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, setIcon } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { ParsedDeckCard, parseCollectionList } from "../parser/deckParser";
 import { MTGSettings } from "../settings";
@@ -6,7 +6,12 @@ import { attachHoverEvents, MtgPopover, renderOwnershipPopoverSection } from "./
 import { createColorIdentityElement } from "./colorIdentity";
 import { inferSection, sectionSortKey, titleCaseSection } from "./cardSections";
 import { createRateLimitWarning } from "./lookupWarning";
-import { CardTransferModal, createTransferButton, TransferSourceContext } from "../transfer/cardTransfer";
+import {
+	CardTransferModal,
+	CollectionMassTransferModal,
+	createTransferButton,
+	TransferSourceContext,
+} from "../transfer/cardTransfer";
 import { loadOwnershipRefsForCards, OwnershipBlockRef } from "../ownership/cardOwnership";
 import { createCollapsibleBlock, createCollapsibleSectionRow } from "./collapsible";
 
@@ -39,9 +44,42 @@ interface RenderCollectionTableOptions {
 }
 
 const COLLECTION_RENDER_TOKEN_ATTR = "data-mtg-collection-render-token";
+const COLLECTION_SELECTION_STATE = new Map<string, Set<string>>();
 
 function normalizeCardKey(cardName: string): string {
 	return cardName.trim().toLowerCase();
+}
+
+function getCollectionSelectionStateKey(
+	stateKey: string | undefined,
+	source: TransferSourceContext | undefined
+): string | null {
+	if (stateKey) {
+		return stateKey;
+	}
+	if (!source) {
+		return null;
+	}
+	return `${source.path}:${source.lineStart}:collection`;
+}
+
+function getCollectionSelectionState(stateKey: string | null): Set<string> {
+	if (!stateKey) {
+		return new Set();
+	}
+
+	const existing = COLLECTION_SELECTION_STATE.get(stateKey);
+	if (existing) {
+		return existing;
+	}
+
+	const next = new Set<string>();
+	COLLECTION_SELECTION_STATE.set(stateKey, next);
+	return next;
+}
+
+function getCollectionSelectionKey(row: CollectionRow): string {
+	return normalizeCardKey(row.lookupName);
 }
 
 function getUnitUsdPrice(result: CardPreviewResult): number | null {
@@ -253,6 +291,27 @@ function createQuantityCell(
 	return cell;
 }
 
+function createSelectionCell(
+	row: CollectionRow,
+	selectedKeys: Set<string>,
+	onSelectionChange: (key: string, selected: boolean) => void
+): HTMLTableCellElement {
+	const cell = document.createElement("td");
+	cell.className = "mtg-collection-select";
+	const checkbox = cell.createEl("input");
+	checkbox.type = "checkbox";
+	checkbox.checked = selectedKeys.has(getCollectionSelectionKey(row));
+	checkbox.disabled = row.quantity <= 0;
+	checkbox.setAttribute("aria-label", `Select ${row.cardName} for mass transfer`);
+	checkbox.addEventListener("click", (event) => {
+		event.stopPropagation();
+	});
+	checkbox.addEventListener("change", () => {
+		onSelectionChange(getCollectionSelectionKey(row), checkbox.checked);
+	});
+	return cell;
+}
+
 function renderCollectionRows(
 	tableBody: HTMLElement,
 	rows: CollectionRow[],
@@ -263,6 +322,8 @@ function renderCollectionRows(
 	onRetry: (cardName: string) => Promise<void>,
 	transfer: RenderCollectionTableOptions["transfer"],
 	ownershipRefsByKey: Map<string, OwnershipBlockRef[]>,
+	selectedKeys: Set<string>,
+	onSelectionChange: (key: string, selected: boolean) => void,
 	sectionsCollapsedByDefault: boolean,
 	stateKey?: string
 ): void {
@@ -276,6 +337,7 @@ function renderCollectionRows(
 				{
 					source: transfer.source,
 					cardName: row.cardName,
+					sourceCardName: row.lookupName,
 					availableQuantity: row.quantity,
 				},
 				{ allowRemove: true, allowAddNew: true }
@@ -289,7 +351,7 @@ function renderCollectionRows(
 			currentSectionRows = createCollapsibleSectionRow(
 				tableBody,
 				currentSection,
-				transfer ? 5 : 4,
+				transfer ? 6 : 4,
 				"mtg-collection-section-cell",
 				sectionsCollapsedByDefault,
 				stateKey ? `${stateKey}:section:${currentSection.trim().toLowerCase()}` : undefined
@@ -299,6 +361,9 @@ function renderCollectionRows(
 
 		const tr = tableBody.createEl("tr", { cls: "mtg-collection-row" });
 		currentSectionRows?.addRow(tr);
+		if (transfer) {
+			tr.appendChild(createSelectionCell(row, selectedKeys, onSelectionChange));
+		}
 		tr.appendChild(createQuantityCell(row, onAdjust, onTransferAway));
 		tr.appendChild(createCollectionCardCell(
 			transfer?.app ?? null,
@@ -318,6 +383,7 @@ function renderCollectionRows(
 				createTransferButton(transfer.app, getSettings(), {
 					source: transfer.source,
 					cardName: row.cardName,
+					sourceCardName: row.lookupName,
 					availableQuantity: row.quantity,
 				})
 			);
@@ -366,6 +432,10 @@ export async function renderCollectionTable(
 	const renderToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 	containerEl.setAttribute(COLLECTION_RENDER_TOKEN_ATTR, renderToken);
 	let rows = createInitialCollectionRows(parsed.cards);
+	const selectionStateKey = getCollectionSelectionStateKey(stateKey, transfer?.source);
+	const selectedKeys = getCollectionSelectionState(selectionStateKey);
+	let massTransferButton: HTMLButtonElement | null = null;
+	let selectAllCheckbox: HTMLInputElement | null = null;
 	const ownershipRefsByKey = transfer
 		? await loadOwnershipRefsForCards(
 			transfer.app,
@@ -378,6 +448,55 @@ export async function renderCollectionTable(
 			}
 		)
 		: new Map<string, OwnershipBlockRef[]>();
+
+	const getSelectedTransferCards = (): Array<{
+		cardName: string;
+		sourceCardName: string;
+		quantity: number;
+		unitPrice: number | null;
+		colorIdentity: string[];
+	}> => rows
+		.filter((row) => selectedKeys.has(getCollectionSelectionKey(row)) && row.quantity > 0)
+		.map((row) => ({
+			cardName: row.cardName,
+			sourceCardName: row.lookupName,
+			quantity: row.quantity,
+			unitPrice: row.priceValue,
+			colorIdentity: row.colorIdentity,
+		}));
+
+	const updateMassTransferState = (): void => {
+		const selectedCount = getSelectedTransferCards().length;
+		if (massTransferButton) {
+			massTransferButton.disabled = selectedCount === 0;
+			massTransferButton.setAttribute(
+				"aria-label",
+				selectedCount === 0
+					? "Select cards to transfer"
+					: `Transfer ${selectedCount} selected card${selectedCount === 1 ? "" : "s"}`
+			);
+		}
+
+		if (selectAllCheckbox) {
+			const selectableRows = rows.filter((row) => row.quantity > 0);
+			const selectedRows = selectableRows.filter((row) =>
+				selectedKeys.has(getCollectionSelectionKey(row))
+			);
+			selectAllCheckbox.checked = selectableRows.length > 0 && selectedRows.length === selectableRows.length;
+			selectAllCheckbox.indeterminate =
+				selectedRows.length > 0 && selectedRows.length < selectableRows.length;
+			selectAllCheckbox.disabled = selectableRows.length === 0;
+		}
+	};
+
+	const onSelectionChange = (key: string, selected: boolean): void => {
+		if (selected) {
+			selectedKeys.add(key);
+		} else {
+			selectedKeys.delete(key);
+		}
+		updateMassTransferState();
+	};
 
 	let isUpdating = false;
 	const onAdjust = async (key: string, delta: number): Promise<void> => {
@@ -413,12 +532,34 @@ export async function renderCollectionTable(
 		cls: "mtg-card-popover-message",
 	});
 
+	if (transfer) {
+		massTransferButton = block.actionsEl.createEl("button", { cls: "mtg-block-action-button" });
+		massTransferButton.type = "button";
+		massTransferButton.title = "Transfer selected cards";
+		massTransferButton.disabled = true;
+		setIcon(massTransferButton, "send");
+		massTransferButton.addEventListener("click", (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			const selectedCards = getSelectedTransferCards();
+			if (selectedCards.length === 0) {
+				return;
+			}
+			new CollectionMassTransferModal(
+				transfer.app,
+				getSettings(),
+				transfer.source,
+				selectedCards
+			).open();
+		});
+	}
+
 	if (onActivateEditor) {
 		bodyEl.addEventListener("click", (event) => {
 			const target = event.target;
 			if (
 				target instanceof HTMLElement &&
-				target.closest("button, .mtg-section-toggle, .mtg-card-ref, details, summary, a, input, select")
+				target.closest("button, .mtg-section-toggle, .mtg-card-ref, .mtg-collection-select, details, summary, a, input, select")
 			) {
 				return;
 			}
@@ -429,6 +570,46 @@ export async function renderCollectionTable(
 	const table = bodyEl.createEl("table", { cls: "mtg-collection-table" });
 	const thead = table.createEl("thead");
 	const headRow = thead.createEl("tr");
+	if (transfer) {
+		const selectHeader = headRow.createEl("th", { cls: "mtg-collection-select" });
+		selectAllCheckbox = selectHeader.createEl("input");
+		selectAllCheckbox.type = "checkbox";
+		selectAllCheckbox.setAttribute("aria-label", "Select all collection cards for mass transfer");
+		selectAllCheckbox.addEventListener("click", (event) => {
+			event.stopPropagation();
+		});
+		selectAllCheckbox.addEventListener("change", () => {
+			const selected = selectAllCheckbox?.checked ?? false;
+			for (const row of rows) {
+				if (row.quantity <= 0) {
+					selectedKeys.delete(getCollectionSelectionKey(row));
+					continue;
+				}
+				if (selected) {
+					selectedKeys.add(getCollectionSelectionKey(row));
+				} else {
+					selectedKeys.delete(getCollectionSelectionKey(row));
+				}
+			}
+			tbody.empty();
+			renderCollectionRows(
+				tbody,
+				rows,
+				cache,
+				getSettings,
+				popover,
+				onAdjust,
+				onRetry,
+				transfer,
+				ownershipRefsByKey,
+				selectedKeys,
+				onSelectionChange,
+				getSettings().collectionSectionsCollapsedByDefault,
+				stateKey
+			);
+			updateMassTransferState();
+		});
+	}
 	headRow.createEl("th", { text: "Qty" });
 	headRow.createEl("th", { text: "Card" });
 	headRow.createEl("th", { text: "Color" });
@@ -448,9 +629,12 @@ export async function renderCollectionTable(
 		onRetry,
 		transfer,
 		ownershipRefsByKey,
+		selectedKeys,
+		onSelectionChange,
 		settings.collectionSectionsCollapsedByDefault,
 		stateKey
 	);
+	updateMassTransferState();
 
 	void mapCollectionRows(parsed.cards, cache, (completed, total) => {
 		if (
@@ -473,6 +657,11 @@ export async function renderCollectionTable(
 		}
 
 		rows = resolvedRows;
+		for (const selectedKey of Array.from(selectedKeys)) {
+			if (!rows.some((row) => getCollectionSelectionKey(row) === selectedKey && row.quantity > 0)) {
+				selectedKeys.delete(selectedKey);
+			}
+		}
 		loadingEl.remove();
 		tbody.empty();
 		renderCollectionRows(
@@ -485,8 +674,11 @@ export async function renderCollectionTable(
 			onRetry,
 			transfer,
 			ownershipRefsByKey,
+			selectedKeys,
+			onSelectionChange,
 			getSettings().collectionSectionsCollapsedByDefault,
 			stateKey
 		);
+		updateMassTransferState();
 	});
 }

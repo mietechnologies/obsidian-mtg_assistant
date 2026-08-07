@@ -1052,6 +1052,15 @@ tr.is-collapsed {
 	text-align: right;
 }
 
+.mtg-collection-select {
+	width: 2.25rem;
+	text-align: center !important;
+}
+
+.mtg-collection-select input {
+	margin: 0;
+}
+
 .mtg-collection-section-cell {
 	padding-top: 1rem;
 	font-weight: 700;

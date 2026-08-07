@@ -19,6 +19,7 @@ export interface TransferSourceContext extends TransferBlockRef {
 export interface TransferRowContext {
 	source: TransferSourceContext;
 	cardName: string;
+	sourceCardName?: string;
 	availableQuantity: number;
 }
 
@@ -49,6 +50,14 @@ export interface DeckBreakdownCardDetails {
 	colorIdentity: string[];
 }
 
+export interface CollectionMassTransferCard {
+	cardName: string;
+	sourceCardName: string;
+	quantity: number;
+	unitPrice: number | null;
+	colorIdentity: string[];
+}
+
 interface LocatedBlock {
 	startLine: number;
 	endLine: number;
@@ -71,8 +80,23 @@ interface DeckBreakdownAssignment extends DeckBreakdownCard {
 	target: TransferTargetBlock | null;
 }
 
+interface CollectionMassTransferCardRow extends DeckBreakdownCard {
+	sourceCardName: string;
+}
+
+interface CollectionMassTransferAssignment extends CollectionMassTransferCardRow {
+	target: TransferTargetBlock | null;
+}
+
 interface PlannedDeckBreakdown {
 	assignments: DeckBreakdownAssignment[];
+	movedQuantity: number;
+	removedQuantity: number;
+	remainingQuantity: number;
+}
+
+interface PlannedCollectionMassTransfer {
+	assignments: CollectionMassTransferAssignment[];
 	movedQuantity: number;
 	removedQuantity: number;
 	remainingQuantity: number;
@@ -450,6 +474,26 @@ function getDeckBreakdownCards(
 		.filter((card) => card.quantity > 0);
 }
 
+function getCollectionMassTransferCards(
+	cards: CollectionMassTransferCard[],
+	settings: MTGSettings,
+	targets: TransferTargetBlock[]
+): CollectionMassTransferCardRow[] {
+	return cards
+		.map((card) => {
+			const defaultTarget = targets.find((target) => deckNeedsCard(target, card.cardName, settings));
+			return {
+				cardName: card.cardName,
+				sourceCardName: card.sourceCardName,
+				quantity: card.quantity,
+				currentPriceText: formatBreakdownPrice(card.quantity, card.unitPrice),
+				colorIdentity: card.colorIdentity,
+				defaultTargetValue: defaultTarget ? getTargetValue(defaultTarget) : "",
+			};
+		})
+		.filter((card) => card.quantity > 0);
+}
+
 function removeLocatedBlock(lines: string[], block: LocatedBlock): void {
 	lines.splice(block.startLine, block.endLine - block.startLine + 1);
 }
@@ -539,12 +583,72 @@ function planDeckBreakdown(
 	};
 }
 
+function planCollectionMassTransfer(
+	assignments: CollectionMassTransferAssignment[],
+	settings: MTGSettings
+): PlannedCollectionMassTransfer {
+	const plannedAssignments: CollectionMassTransferAssignment[] = [];
+	const remainingNeedByTargetCard = new Map<string, number>();
+	let movedQuantity = 0;
+	let removedQuantity = 0;
+	let remainingQuantity = 0;
+
+	for (const assignment of assignments) {
+		if (assignment.quantity <= 0) {
+			continue;
+		}
+
+		if (!assignment.target) {
+			plannedAssignments.push(assignment);
+			removedQuantity += assignment.quantity;
+			continue;
+		}
+
+		if (assignment.target.language === "collection") {
+			plannedAssignments.push(assignment);
+			movedQuantity += assignment.quantity;
+			continue;
+		}
+
+		const capacityKey = `${getTargetValue(assignment.target)}\u0000${normalizeCardKey(assignment.cardName)}`;
+		let remainingNeed = remainingNeedByTargetCard.get(capacityKey);
+		if (remainingNeed === undefined) {
+			remainingNeed = getDeckRemainingNeed(
+				assignment.target.source,
+				assignment.cardName,
+				settings
+			);
+		}
+
+		const quantityToMove = Math.min(assignment.quantity, remainingNeed);
+		remainingNeedByTargetCard.set(capacityKey, Math.max(0, remainingNeed - quantityToMove));
+
+		if (quantityToMove > 0) {
+			plannedAssignments.push({
+				...assignment,
+				quantity: quantityToMove,
+			});
+			movedQuantity += quantityToMove;
+		}
+
+		remainingQuantity += assignment.quantity - quantityToMove;
+	}
+
+	return {
+		assignments: plannedAssignments,
+		movedQuantity,
+		removedQuantity,
+		remainingQuantity,
+	};
+}
+
 async function applyTransfer(
 	app: App,
 	settings: MTGSettings,
 	source: TransferSourceContext,
 	target: TransferTargetBlock,
 	cardName: string,
+	sourceCardName: string,
 	quantity: number
 ): Promise<void> {
 	if (quantity <= 0 || quantity > Number.MAX_SAFE_INTEGER) {
@@ -568,7 +672,7 @@ async function applyTransfer(
 
 			const nextSource = updateBlockSource(
 				{ ...source, source: sourceBlock.source },
-				cardName,
+				sourceCardName,
 				-quantity
 			);
 			const nextTarget = updateBlockSource(
@@ -607,11 +711,11 @@ async function applyTransfer(
 		const lines = content.split(/\r?\n/);
 		replaceBlockSource(
 			lines,
-			block,
-			source.language,
-			settings,
-			updateBlockSource({ ...source, source: block.source }, cardName, -quantity)
-		);
+				block,
+				source.language,
+				settings,
+				updateBlockSource({ ...source, source: block.source }, sourceCardName, -quantity)
+			);
 		return lines.join(eol);
 	});
 
@@ -884,6 +988,147 @@ async function applyDeckBreakdown(
 	return plan;
 }
 
+async function applyCollectionMassTransfer(
+	app: App,
+	settings: MTGSettings,
+	source: TransferSourceContext,
+	assignments: CollectionMassTransferAssignment[]
+): Promise<PlannedCollectionMassTransfer> {
+	const plan = planCollectionMassTransfer(assignments, settings);
+	const sourceFile = app.vault.getAbstractFileByPath(source.path);
+	if (!(sourceFile instanceof TFile)) {
+		throw new Error("Could not find the source collection note.");
+	}
+
+	if (plan.assignments.length === 0) {
+		return plan;
+	}
+
+	const assignmentsByFile = new Map<string, CollectionMassTransferAssignment[]>();
+	for (const assignment of plan.assignments) {
+		if (!assignment.target) {
+			continue;
+		}
+
+		const currentAssignments = assignmentsByFile.get(assignment.target.path);
+		if (currentAssignments) {
+			currentAssignments.push(assignment);
+		} else {
+			assignmentsByFile.set(assignment.target.path, [assignment]);
+		}
+	}
+
+	for (const [path, fileAssignments] of assignmentsByFile) {
+		const targetFile = app.vault.getAbstractFileByPath(path);
+		if (!(targetFile instanceof TFile)) {
+			throw new Error("Could not find a destination note.");
+		}
+
+		await app.vault.process(targetFile, (content) => {
+			const eol = content.includes("\r\n") ? "\r\n" : "\n";
+			const lines = content.split(/\r?\n/);
+			const assignmentsByTarget = new Map<string, CollectionMassTransferAssignment[]>();
+
+			for (const assignment of fileAssignments) {
+				if (!assignment.target) {
+					continue;
+				}
+
+				const key = `${assignment.target.lineStart}\u0000${assignment.target.language}`;
+				const currentAssignments = assignmentsByTarget.get(key);
+				if (currentAssignments) {
+					currentAssignments.push(assignment);
+				} else {
+					assignmentsByTarget.set(key, [assignment]);
+				}
+			}
+
+			const replacements: Array<{
+				block: LocatedBlock;
+				language: TransferBlockLanguage;
+				source: string;
+			}> = [];
+
+			for (const targetAssignments of assignmentsByTarget.values()) {
+				const target = targetAssignments[0]?.target;
+				if (!target) {
+					continue;
+				}
+
+				const targetBlock = locateBlock(content, target.lineStart, target.language, settings);
+				if (!targetBlock) {
+					throw new Error("Could not locate a destination block.");
+				}
+
+				replacements.push({
+					block: targetBlock,
+					language: target.language,
+					source: addCardsToBlockSource(
+						{ ...target, source: targetBlock.source },
+						targetAssignments.map((assignment) => ({
+							cardName: assignment.cardName,
+							quantity: assignment.quantity,
+						}))
+					),
+				});
+			}
+
+			if (path === source.path) {
+				const sourceBlock = locateBlock(content, source.lineStart, "collection", settings);
+				if (!sourceBlock) {
+					throw new Error("Could not locate the source collection block.");
+				}
+				replacements.push({
+					block: sourceBlock,
+					language: "collection",
+					source: addCardsToBlockSource(
+						{ ...source, source: sourceBlock.source },
+						plan.assignments.map((assignment) => ({
+							cardName: assignment.sourceCardName,
+							quantity: -assignment.quantity,
+						}))
+					),
+				});
+			}
+
+			replacements.sort((left, right) => right.block.startLine - left.block.startLine);
+			for (const replacement of replacements) {
+				replaceBlockSource(lines, replacement.block, replacement.language, settings, replacement.source);
+			}
+
+			return lines.join(eol);
+		});
+	}
+
+	if (!assignmentsByFile.has(source.path)) {
+		await app.vault.process(sourceFile, (content) => {
+			const eol = content.includes("\r\n") ? "\r\n" : "\n";
+			const sourceBlock = locateBlock(content, source.lineStart, "collection", settings);
+			if (!sourceBlock) {
+				throw new Error("Could not locate the source collection block.");
+			}
+
+			const lines = content.split(/\r?\n/);
+			replaceBlockSource(
+				lines,
+				sourceBlock,
+				"collection",
+				settings,
+				addCardsToBlockSource(
+					{ ...source, source: sourceBlock.source },
+					plan.assignments.map((assignment) => ({
+						cardName: assignment.sourceCardName,
+						quantity: -assignment.quantity,
+					}))
+				)
+			);
+			return lines.join(eol);
+		});
+	}
+
+	return plan;
+}
+
 export class CardTransferModal extends Modal {
 	private targets: TransferTargetBlock[] = [];
 	private blockSelect!: HTMLSelectElement;
@@ -1039,7 +1284,15 @@ export class CardTransferModal extends Modal {
 
 		this.applyButton.disabled = true;
 		try {
-			await applyTransfer(this.app, this.settings, this.row.source, target, this.row.cardName, quantity);
+			await applyTransfer(
+				this.app,
+				this.settings,
+				this.row.source,
+				target,
+				this.row.cardName,
+				this.row.sourceCardName ?? this.row.cardName,
+				quantity
+			);
 			await this.row.source.onTransferComplete?.();
 			new Notice(`Transferred ${quantity} ${this.row.cardName}.`);
 			this.close();
@@ -1061,7 +1314,13 @@ export class CardTransferModal extends Modal {
 			this.removeButton.disabled = true;
 		}
 		try {
-			await removeFromSource(this.app, this.settings, this.row.source, this.row.cardName, quantity);
+			await removeFromSource(
+				this.app,
+				this.settings,
+				this.row.source,
+				this.row.sourceCardName ?? this.row.cardName,
+				quantity
+			);
 			await this.row.source.onTransferComplete?.();
 			new Notice(`Removed ${quantity} ${this.row.cardName}.`);
 			this.close();
@@ -1244,7 +1503,15 @@ export class CardTransferToTargetModal extends Modal {
 
 		this.applyButton.disabled = true;
 		try {
-			await applyTransfer(this.app, this.settings, source, this.target, this.cardName, quantity);
+			await applyTransfer(
+				this.app,
+				this.settings,
+				source,
+				this.target,
+				this.cardName,
+				this.cardName,
+				quantity
+			);
 			await source.onTransferComplete?.();
 			await this.onTransferComplete?.();
 			new Notice(`Transferred ${quantity} ${this.cardName}.`);
@@ -1274,6 +1541,220 @@ export class CardTransferToTargetModal extends Modal {
 			new Notice(message);
 			this.applyButton.disabled = false;
 			this.addNewButton.disabled = false;
+		}
+	}
+}
+
+export class CollectionMassTransferModal extends Modal {
+	private targets: TransferTargetBlock[] = [];
+	private cards: CollectionMassTransferCardRow[] = [];
+	private assignmentSelects: HTMLSelectElement[] = [];
+	private bulkSelect?: HTMLSelectElement;
+	private assignmentsEl?: HTMLElement;
+	private applyButton!: HTMLButtonElement;
+
+	constructor(
+		app: App,
+		private readonly settings: MTGSettings,
+		private readonly source: TransferSourceContext,
+		private readonly selectedCards: CollectionMassTransferCard[]
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		this.modalEl.addClass("mtg-breakdown-modal-container");
+		contentEl.addClass("mtg-transfer-modal", "mtg-breakdown-modal");
+		contentEl.createEl("h3", { text: "Transfer selected cards" });
+
+		const totalQuantity = this.selectedCards.reduce((sum, card) => sum + card.quantity, 0);
+		contentEl.createEl("p", {
+			text: totalQuantity > 0
+				? `This will transfer ${totalQuantity} selected card${totalQuantity === 1 ? "" : "s"}.`
+				: "No cards are selected for transfer.",
+			cls: "mtg-transfer-meta",
+		});
+
+		if (totalQuantity <= 0) {
+			this.renderActions("Transfer cards", true, () => undefined);
+			return;
+		}
+
+		this.bulkSelect = this.createLabeledSelect(contentEl, "Set all destinations");
+		this.bulkSelect.addEventListener("change", () => this.applyBulkDestination());
+		this.assignmentsEl = contentEl.createEl("div", { cls: "mtg-breakdown-assignments" });
+		this.renderActions("Transfer cards", true, () => {
+			void this.apply();
+		});
+		void this.loadTargets();
+	}
+
+	private createLabeledSelect(containerEl: HTMLElement, label: string): HTMLSelectElement {
+		const wrapper = containerEl.createEl("label", { cls: "mtg-transfer-field" });
+		wrapper.createEl("span", { text: label });
+		return wrapper.createEl("select");
+	}
+
+	private renderActions(applyText: string, disabled: boolean, onApply: () => void): void {
+		const actions = this.contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		this.applyButton = actions.createEl("button", {
+			text: applyText,
+			cls: "mod-cta",
+		});
+		this.applyButton.type = "button";
+		this.applyButton.disabled = disabled;
+		this.applyButton.addEventListener("click", onApply);
+
+		const cancelButton = actions.createEl("button", { text: "Cancel" });
+		cancelButton.type = "button";
+		cancelButton.addEventListener("click", () => this.close());
+	}
+
+	private async loadTargets(): Promise<void> {
+		this.targets = filterDeckBreakdownTargets(
+			await listTransferBlocks(this.app, this.settings, this.source),
+			this.settings
+		);
+		this.cards = getCollectionMassTransferCards(this.selectedCards, this.settings, this.targets);
+		this.renderBlockOptions();
+	}
+
+	private renderBlockOptions(): void {
+		this.assignmentSelects = [];
+		this.bulkSelect?.empty();
+		this.assignmentsEl?.empty();
+
+		this.appendDestinationOptions(this.bulkSelect, "Choose destination for all cards");
+
+		const table = this.assignmentsEl?.createEl("table", { cls: "mtg-breakdown-table" });
+		const thead = table?.createEl("thead");
+		const headRow = thead?.createEl("tr");
+		headRow?.createEl("th", { text: "Qty" });
+		headRow?.createEl("th", { text: "Card" });
+		headRow?.createEl("th", { text: "Current price", cls: "mtg-breakdown-price" });
+		headRow?.createEl("th", { text: "Color", cls: "mtg-breakdown-color" });
+		headRow?.createEl("th", { text: "Destination" });
+		const tbody = table?.createEl("tbody");
+
+		for (const card of this.cards) {
+			const row = tbody?.createEl("tr");
+			row?.createEl("td", { text: String(card.quantity), cls: "mtg-breakdown-qty" });
+			row?.createEl("td", { text: card.cardName });
+			row?.createEl("td", { text: card.currentPriceText, cls: "mtg-breakdown-price" });
+			const colorCell = row?.createEl("td", { cls: "mtg-breakdown-color" });
+			colorCell?.appendChild(createColorIdentityElement(card.colorIdentity));
+			const destinationCell = row?.createEl("td");
+			const select = destinationCell?.createEl("select");
+			if (!select) {
+				continue;
+			}
+			this.appendDestinationOptions(select, "Choose destination or removal");
+			select.value = card.defaultTargetValue;
+			select.addEventListener("change", () => this.updateApplyState());
+			this.assignmentSelects.push(select);
+		}
+
+		this.updateApplyState();
+	}
+
+	private appendDestinationOptions(select: HTMLSelectElement | undefined, placeholder: string): void {
+		if (!select) {
+			return;
+		}
+
+		select.createEl("option", { text: placeholder, value: "" });
+		select.createEl("option", {
+			text: "Remove from collection",
+			value: DECK_BREAKDOWN_REMOVE_VALUE,
+		});
+		for (const block of this.targets) {
+			select.createEl("option", {
+				text: block.label,
+				value: getTargetValue(block),
+			});
+		}
+	}
+
+	private applyBulkDestination(): void {
+		if (!this.bulkSelect?.value) {
+			return;
+		}
+
+		for (const select of this.assignmentSelects) {
+			select.value = this.bulkSelect.value;
+		}
+		this.updateApplyState();
+	}
+
+	private getTargetByValue(value: string): TransferTargetBlock | null {
+		if (!value) {
+			return null;
+		}
+
+		return (
+			this.targets.find(
+				(target) => getTargetValue(target) === value
+			) ?? null
+		);
+	}
+
+	private getAssignments(): CollectionMassTransferAssignment[] | null {
+		if (this.assignmentSelects.length !== this.cards.length) {
+			return null;
+		}
+
+		const assignments: CollectionMassTransferAssignment[] = [];
+		for (let index = 0; index < this.cards.length; index += 1) {
+			const card = this.cards[index];
+			const select = this.assignmentSelects[index];
+			if (!card || !select) {
+				return null;
+			}
+
+			const target = select.value === DECK_BREAKDOWN_REMOVE_VALUE
+				? null
+				: this.getTargetByValue(select.value);
+			if (select.value !== DECK_BREAKDOWN_REMOVE_VALUE && !target) {
+				return null;
+			}
+
+			assignments.push({
+				...card,
+				target,
+			});
+		}
+
+		return assignments;
+	}
+
+	private updateApplyState(): void {
+		this.applyButton.disabled = this.getAssignments() === null;
+	}
+
+	private async apply(): Promise<void> {
+		const assignments = this.getAssignments();
+		if (!assignments) {
+			return;
+		}
+
+		this.applyButton.disabled = true;
+		try {
+			const result = await applyCollectionMassTransfer(this.app, this.settings, this.source, assignments);
+			await this.source.onTransferComplete?.();
+			const removedText = result.removedQuantity > 0
+				? ` Removed ${result.removedQuantity} card${result.removedQuantity === 1 ? "" : "s"}.`
+				: "";
+			const remainingText = result.remainingQuantity > 0
+				? ` ${result.remainingQuantity} card${result.remainingQuantity === 1 ? "" : "s"} could not be moved because the selected deck did not need that many copies.`
+				: "";
+			new Notice(`Transferred ${result.movedQuantity} card${result.movedQuantity === 1 ? "" : "s"}.${removedText}${remainingText}`);
+			this.close();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Mass transfer failed.";
+			new Notice(message);
+			this.applyButton.disabled = false;
 		}
 	}
 }
