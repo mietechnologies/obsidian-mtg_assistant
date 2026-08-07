@@ -6,5 +6,7 @@
   Add inline completion for `[mtg:...]` references to reduce typos and speed up entry.
 - Commands and quick actions:
   Add command palette actions for inserting card references, creating deck or collection blocks, refreshing cache, and opening external card pages.
+- Expand "Buy on TCGPlayer" options:
+  - Copy buylist to clipboard
 
 ## Bug Fixes and Feature Improvements (DO NOT DELETE THIS LINE)

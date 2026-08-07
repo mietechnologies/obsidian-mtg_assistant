@@ -413,6 +413,18 @@ function deckNeedsCard(target: TransferTargetBlock, cardName: string, settings: 
 	});
 }
 
+function isDigitalOnlyDeckTarget(target: TransferTargetBlock, settings: MTGSettings): boolean {
+	return target.language === "deck" &&
+		parseDeckList(target.source, settings.commanderMarker).digitalOnly === true;
+}
+
+function filterDeckBreakdownTargets(
+	targets: TransferTargetBlock[],
+	settings: MTGSettings
+): TransferTargetBlock[] {
+	return targets.filter((target) => !isDigitalOnlyDeckTarget(target, settings));
+}
+
 function getDeckBreakdownCards(
 	source: string,
 	settings: MTGSettings,
@@ -483,6 +495,10 @@ function planDeckBreakdown(
 			plannedAssignments.push(assignment);
 			removedQuantity += assignment.quantity;
 			continue;
+		}
+
+		if (isDigitalOnlyDeckTarget(assignment.target, settings)) {
+			throw new Error("Digital-only deck lists cannot be breakdown destinations.");
 		}
 
 		if (assignment.target.language === "collection") {
@@ -1349,7 +1365,10 @@ export class DeckBreakdownModal extends Modal {
 	}
 
 	private async loadTargets(): Promise<void> {
-		this.targets = await listTransferBlocks(this.app, this.settings, this.context.source);
+		this.targets = filterDeckBreakdownTargets(
+			await listTransferBlocks(this.app, this.settings, this.context.source),
+			this.settings
+		);
 		this.cards = getDeckBreakdownCards(
 			this.context.source.source,
 			this.settings,
