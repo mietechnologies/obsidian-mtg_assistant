@@ -1,13 +1,16 @@
 export const DEFAULT_SECTION_ORDER = [
 	"Commander",
 	"Creatures",
-	"Artifacts",
-	"Enchantments",
+	"Planeswalkers",
 	"Instants",
 	"Sorceries",
-	"Planeswalkers",
+	"Artifacts",
+	"Enchantments",
 	"Battles",
 	"Lands",
+	"Other",
+	"Sideboard",
+	"Tokens",
 ];
 
 export function normalizeSectionName(section: string): string {
