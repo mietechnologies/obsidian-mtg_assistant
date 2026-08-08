@@ -28,7 +28,7 @@ class MtgDeckWidget extends WidgetType {
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		const container = document.createElement("div");
+		const container = createEl("div");
 		container.className = "mtg-deck-widget";
 		container.addEventListener("click", (event) => {
 			const target = event.target;

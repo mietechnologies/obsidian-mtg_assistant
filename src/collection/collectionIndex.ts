@@ -161,7 +161,7 @@ function collectMarkdownFilesInFolder(folder: TFolder): TFile[] {
 function getCollectionFiles(app: App, folder: string): TFile[] {
 	const normalizedFolder = normalizeFolder(folder);
 	if (!normalizedFolder) {
-		return app.vault.getMarkdownFiles();
+		return [];
 	}
 
 	const abstractFile = app.vault.getAbstractFileByPath(normalizedFolder);

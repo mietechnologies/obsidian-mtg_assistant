@@ -21,6 +21,70 @@ interface MemoryCacheEntry {
 	card?: CardMetadataFields;
 }
 
+interface LegacyMetadataEntry {
+	timestamp?: number;
+	found?: boolean;
+}
+
+const METADATA_STATUSES = new Set<MetadataEntry["status"]>([
+	"success",
+	"not-found",
+	"no-image",
+	"rate-limited",
+	"network-error",
+	"download-error",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | undefined {
+	return typeof value === "string" ? value : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalCardMetadata(value: unknown): CardMetadataFields | undefined {
+	return isRecord(value) ? value as CardMetadataFields : undefined;
+}
+
+function parseMetadataEntry(value: unknown): MetadataEntry | null {
+	if (!isRecord(value)) {
+		return null;
+	}
+
+	const status = value.status;
+	const timestamp = optionalNumber(value.timestamp);
+	if (typeof status !== "string" || !METADATA_STATUSES.has(status as MetadataEntry["status"]) || timestamp === undefined) {
+		return null;
+	}
+
+	return {
+		timestamp,
+		staticTimestamp: optionalNumber(value.staticTimestamp),
+		priceTimestamp: optionalNumber(value.priceTimestamp),
+		status: status as MetadataEntry["status"],
+		imageUrl: optionalString(value.imageUrl),
+		resolvedName: optionalString(value.resolvedName),
+		message: optionalString(value.message),
+		card: optionalCardMetadata(value.card),
+	};
+}
+
+function parseLegacyMetadataEntry(value: unknown): LegacyMetadataEntry | null {
+	if (!isRecord(value)) {
+		return null;
+	}
+
+	return {
+		timestamp: optionalNumber(value.timestamp),
+		found: typeof value.found === "boolean" ? value.found : undefined,
+	};
+}
+
 export interface CardPreviewResult {
 	status: CardLookupStatus | "download-error";
 	cardName: string;
@@ -275,27 +339,27 @@ export class CardCache {
 
 		try {
 			const raw = await this.app.vault.adapter.read(this.metadataPath);
-			const parsed = JSON.parse(raw) as Record<string, MetadataEntry & { found?: boolean }>;
-			for (const [key, value] of Object.entries(parsed)) {
-				if (!value) continue;
+			const parsed: unknown = JSON.parse(raw);
+			if (!isRecord(parsed)) {
+				return;
+			}
 
-				if ("status" in value && value.status) {
-					const timestamp = value.staticTimestamp ?? value.timestamp;
-					this.metadata.set(key, value);
-					if (!value.staticTimestamp && timestamp) {
-						value.staticTimestamp = timestamp;
-					}
-					if (!value.priceTimestamp && timestamp) {
-						value.priceTimestamp = timestamp;
-					}
+			for (const [key, value] of Object.entries(parsed)) {
+				const entry = parseMetadataEntry(value);
+				if (entry) {
+					const timestamp = entry.staticTimestamp ?? entry.timestamp;
+					entry.staticTimestamp = entry.staticTimestamp ?? timestamp;
+					entry.priceTimestamp = entry.priceTimestamp ?? timestamp;
+					this.metadata.set(key, entry);
 					continue;
 				}
 
-				if (value.found === false) {
+				const legacyEntry = parseLegacyMetadataEntry(value);
+				if (legacyEntry?.found === false && legacyEntry.timestamp !== undefined) {
 					this.metadata.set(key, {
-						timestamp: value.timestamp,
-						staticTimestamp: value.timestamp,
-						priceTimestamp: value.timestamp,
+						timestamp: legacyEntry.timestamp,
+						staticTimestamp: legacyEntry.timestamp,
+						priceTimestamp: legacyEntry.timestamp,
 						status: "not-found",
 						message: "Card not found in cached legacy metadata.",
 					});

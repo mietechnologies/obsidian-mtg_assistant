@@ -114,7 +114,7 @@ export default class MtgAssistantPlugin extends Plugin {
 			if (!(preEl instanceof HTMLPreElement) || !preEl.parentElement) continue;
 
 			if (classes.includes(`language-${this.settings.deckCodeBlockLanguage}`)) {
-				const container = document.createElement("div");
+				const container = createEl("div");
 				preEl.replaceWith(container);
 				await renderDeckTable(
 					this.app,
@@ -130,7 +130,7 @@ export default class MtgAssistantPlugin extends Plugin {
 			if (classes.includes(`language-${this.settings.collectionCodeBlockLanguage}`)) {
 				const sectionInfo = ctx.getSectionInfo(preEl);
 				const sourcePath = ctx.sourcePath;
-				const container = document.createElement("div");
+				const container = createEl("div");
 				preEl.replaceWith(container);
 				await renderCollectionTable({
 					containerEl: container,

@@ -161,8 +161,8 @@ function createCollectionCardCell(
 	popover: MtgPopover,
 	onRetry: (cardName: string) => Promise<void>
 ): HTMLTableCellElement {
-	const cell = document.createElement("td");
-	const span = document.createElement("span");
+	const cell = createEl("td");
+	const span = createEl("span");
 	span.className = "mtg-card-ref";
 	span.textContent = row.cardName;
 	span.tabIndex = 0;
@@ -180,7 +180,7 @@ function createQuantityCell(
 	row: CollectionRow,
 	onAdjust: (key: string, delta: number) => Promise<void>
 ): HTMLTableCellElement {
-	const cell = document.createElement("td");
+	const cell = createEl("td");
 	cell.className = "mtg-collection-qty";
 
 	const wrapper = cell.createEl("div", { cls: "mtg-collection-qty-controls" });

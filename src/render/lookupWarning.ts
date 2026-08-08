@@ -6,7 +6,7 @@ export function createInlineWarning(
 		onClick?: () => void | Promise<void>;
 	}
 ): HTMLElement {
-	const warning = document.createElement(options?.onClick ? "button" : "span");
+	const warning = createEl(options?.onClick ? "button" : "span");
 	warning.className = "mtg-card-warning";
 	warning.textContent = options?.symbol ?? "⚠️";
 	warning.setAttribute(

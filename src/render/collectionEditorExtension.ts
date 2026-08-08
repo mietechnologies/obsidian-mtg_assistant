@@ -35,7 +35,7 @@ class MtgCollectionWidget extends WidgetType {
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		const container = document.createElement("div");
+		const container = createEl("div");
 		container.className = "mtg-collection-widget";
 
 		const activateEditor = (): void => {

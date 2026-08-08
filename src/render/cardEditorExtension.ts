@@ -27,7 +27,7 @@ class MtgCardWidget extends WidgetType {
 	}
 
 	toDOM(): HTMLElement {
-		const span = document.createElement("span");
+		const span = createEl("span");
 		span.className = "mtg-card-ref";
 		span.textContent = this.cardName;
 		span.tabIndex = 0;

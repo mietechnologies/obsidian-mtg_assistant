@@ -25,11 +25,11 @@ function createColorlessIcon(): SVGElement | null {
 function createSvgElement(svgMarkup: string): SVGElement | null {
 	const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
 	const svg = doc.documentElement;
-	return svg instanceof SVGElement ? svg : null;
+	return svg.instanceOf(SVGElement) ? svg : null;
 }
 
 export function createColorIdentityElement(colorIdentity: string[]): HTMLElement {
-	const container = document.createElement("span");
+	const container = createEl("span");
 	container.className = "mtg-color-identity";
 
 	if (colorIdentity.length === 0) {

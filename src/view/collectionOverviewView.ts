@@ -164,7 +164,7 @@ function createQuantityCell(
 	view: CollectionOverviewView,
 	row: ResolvedCollectionRow
 ): HTMLTableCellElement {
-	const cell = document.createElement("td");
+	const cell = createEl("td");
 	cell.className = "mtg-collection-qty mtg-overview-qty-cell";
 
 	const wrapper = cell.createEl("div", { cls: "mtg-collection-qty-controls" });
@@ -525,10 +525,13 @@ export class CollectionOverviewView extends ItemView {
 		const sectionSelect = sectionGroup.createEl("select", {
 			cls: "mtg-overview-control-select",
 		});
-		const sections = [
-			"all",
-			...Array.from(new Set(rows.flatMap((row) => row.typeCategories))).sort(),
-		];
+		const typeCategories = new Set<string>();
+		for (const row of rows) {
+			for (const category of row.typeCategories) {
+				typeCategories.add(category);
+			}
+		}
+		const sections = ["all", ...Array.from(typeCategories).sort()];
 		for (const section of sections) {
 			const option = sectionSelect.createEl("option");
 			option.value = section;

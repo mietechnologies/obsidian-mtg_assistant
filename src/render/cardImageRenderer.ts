@@ -109,7 +109,7 @@ export class MtgPopover {
 	private popoverActive = false;
 
 	constructor() {
-		this.el = document.createElement("div");
+		this.el = createEl("div");
 		this.el.className = "mtg-card-popover";
 		this.el.addEventListener("mouseenter", () => {
 			this.popoverActive = true;
@@ -275,7 +275,7 @@ function createCardSpan(
 	getSettings: () => MTGSettings,
 	popover: MtgPopover
 ): HTMLElement {
-	const span = document.createElement("span");
+	const span = createEl("span");
 	span.className = "mtg-card-ref";
 	span.textContent = cardName;
 	span.tabIndex = 0;
