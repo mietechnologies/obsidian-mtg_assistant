@@ -562,6 +562,10 @@ tr.is-collapsed {
 }
 
 .mtg-deck-deficit-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
 	margin-top: 0.75rem;
 }
 
@@ -995,14 +999,26 @@ tr.is-collapsed {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.55rem;
+	box-sizing: border-box;
+	min-height: 2.4rem;
 	padding: 0.55rem 0.85rem;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 999px;
 	background: var(--background-primary);
 	color: var(--text-normal);
+	font-family: inherit;
+	font-size: 0.95em;
 	text-decoration: none;
 	font-weight: 600;
+	line-height: 1;
+	cursor: pointer;
 	transition: transform 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+
+button.mtg-tcgplayer-button {
+	appearance: none;
+	margin: 0;
+	box-shadow: none;
 }
 
 .mtg-tcgplayer-button:hover,
@@ -1017,6 +1033,12 @@ tr.is-collapsed {
 	height: 1rem;
 	display: block;
 	flex: 0 0 auto;
+}
+
+.mtg-tcgplayer-button-icon svg {
+	width: 1rem;
+	height: 1rem;
+	display: block;
 }
 
 .mtg-collection-widget {

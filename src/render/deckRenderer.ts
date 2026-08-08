@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, Modal, Notice, setIcon } from "obsidian";
 import { CardCache, CardPreviewResult } from "../cache/cardCache";
 import { CollectionIndex } from "../collection/collectionIndex";
 import type { CollectionOverview, CollectionRow, CollectionTotals } from "../collection/collectionIndex";
@@ -513,15 +513,20 @@ function formatTcgPlayerMassEntryCardName(cardName: string): string {
 	return cardName.split(/\s+\/\/\s+/, 1)[0]?.trim() || cardName.trim();
 }
 
-function buildTcgPlayerMassEntryUrl(rows: DeckDeficitRow[]): string | null {
-	if (rows.length === 0) {
-		return null;
-	}
-
-	const content = rows
+function buildTcgPlayerMassEntryLines(rows: DeckDeficitRow[]): string[] {
+	return rows
 		.filter((row) => row.missing > 0)
-		.map((row) => `${row.missing} ${formatTcgPlayerMassEntryCardName(row.cardName)}`)
-		.join("||");
+		.map((row) => `${row.missing} ${formatTcgPlayerMassEntryCardName(row.cardName)}`);
+}
+
+function buildFormattedBuylistLines(rows: DeckDeficitRow[]): string[] {
+	return rows
+		.filter((row) => row.missing > 0)
+		.map((row) => `${row.missing} [mtg: ${formatTcgPlayerMassEntryCardName(row.cardName)}]`);
+}
+
+function buildTcgPlayerMassEntryUrl(rows: DeckDeficitRow[]): string | null {
+	const content = buildTcgPlayerMassEntryLines(rows).join("||");
 
 	if (!content) {
 		return null;
@@ -558,6 +563,89 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 	label.textContent = "Buy missing cards";
 	link.appendChild(label);
 	return link;
+}
+
+async function copyBuylistToClipboard(text: string): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(text);
+		new Notice("Copied buylist to clipboard.");
+	} catch {
+		new Notice("Could not copy buylist to clipboard.");
+	}
+}
+
+class CopyBuylistModal extends Modal {
+	constructor(
+		app: App,
+		private readonly plainText: string,
+		private readonly formattedText: string
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass("mtg-buylist-copy-modal");
+		contentEl.createEl("h3", { text: "Copy buylist" });
+		contentEl.createEl("p", {
+			text: "Choose a clipboard format for the missing cards.",
+			cls: "mtg-transfer-meta",
+		});
+
+		const actions = contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		const plainButton = actions.createEl("button", {
+			text: "Copy plain text",
+			cls: "mod-cta",
+		});
+		plainButton.type = "button";
+		plainButton.addEventListener("click", () => {
+			void copyBuylistToClipboard(this.plainText).then(() => this.close());
+		});
+
+		const formattedButton = actions.createEl("button", {
+			text: "Copy formatted",
+		});
+		formattedButton.type = "button";
+		formattedButton.addEventListener("click", () => {
+			void copyBuylistToClipboard(this.formattedText).then(() => this.close());
+		});
+
+		const cancelButton = actions.createEl("button", { text: "Cancel" });
+		cancelButton.type = "button";
+		cancelButton.addEventListener("click", () => this.close());
+	}
+}
+
+function createCopyBuylistButton(app: App, rows: DeckDeficitRow[]): HTMLButtonElement | null {
+	const plainText = buildTcgPlayerMassEntryLines(rows).join("\n");
+	const formattedText = buildFormattedBuylistLines(rows).join("\n");
+	if (!plainText || !formattedText) {
+		return null;
+	}
+
+	const button = document.createElement("button");
+	button.type = "button";
+	button.className = "mtg-tcgplayer-button";
+	button.setAttribute("aria-label", "Copy missing-card buylist");
+
+	const icon = document.createElement("span");
+	icon.className = "mtg-tcgplayer-button-icon";
+	icon.setAttribute("aria-hidden", "true");
+	setIcon(icon, "clipboard-copy");
+	button.appendChild(icon);
+
+	const label = document.createElement("span");
+	label.textContent = "Copy buylist";
+	button.appendChild(label);
+
+	button.addEventListener("click", (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		new CopyBuylistModal(app, plainText, formattedText).open();
+	});
+
+	return button;
 }
 
 async function buildDeckCollectionCoverage(
@@ -1460,9 +1548,15 @@ function renderCollectionCoverageSection(
 	});
 
 	const tcgPlayerButton = createTcgPlayerButton(coverage.rows);
-	if (tcgPlayerButton) {
+	const copyBuylistButton = createCopyBuylistButton(app, coverage.rows);
+	if (tcgPlayerButton || copyBuylistButton) {
 		const actionRow = section.createEl("div", { cls: "mtg-deck-deficit-actions" });
-		actionRow.appendChild(tcgPlayerButton);
+		if (tcgPlayerButton) {
+			actionRow.appendChild(tcgPlayerButton);
+		}
+		if (copyBuylistButton) {
+			actionRow.appendChild(copyBuylistButton);
+		}
 	}
 }
 

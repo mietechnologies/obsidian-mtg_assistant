@@ -90,7 +90,7 @@ Rendered deck features:
 - Deck validation for deck size, commander count, singleton rules, and Vintage restricted cards
 - Collection coverage against notes in your configured collection folder
 - Estimated missing-card cost
-- TCGPlayer mass-entry link for missing cards
+- TCGPlayer mass-entry link and clipboard buylist for missing cards
 - Deck analytics including mana curve, type distribution, color identity, and keyword summaries
 
 ## Collection Lists
