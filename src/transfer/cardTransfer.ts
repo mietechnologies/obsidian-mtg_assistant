@@ -1174,14 +1174,14 @@ export class CardTransferModal extends Modal {
 		this.blockSelect = this.createLabeledSelect(contentEl, "Destination deck or collection");
 
 		const quantityLabel = contentEl.createEl("label", { cls: "mtg-transfer-field" });
-		quantityLabel.createEl("span", { text: "Quantity" });
+		quantityLabel.createSpan({ text: "Quantity" });
 		this.quantityInput = quantityLabel.createEl("input");
 		this.quantityInput.type = "number";
 		this.quantityInput.min = "1";
 		this.quantityInput.max = String(this.row.availableQuantity);
 		this.quantityInput.value = String(Math.min(1, this.row.availableQuantity));
 
-		const actions = contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		const actions = contentEl.createDiv({ cls: "mtg-transfer-actions" });
 		this.applyButton = actions.createEl("button", {
 			text: "Apply",
 			cls: "mod-cta",
@@ -1227,7 +1227,7 @@ export class CardTransferModal extends Modal {
 
 	private createLabeledSelect(containerEl: HTMLElement, label: string): HTMLSelectElement {
 		const wrapper = containerEl.createEl("label", { cls: "mtg-transfer-field" });
-		wrapper.createEl("span", { text: label });
+		wrapper.createSpan({ text: label });
 		return wrapper.createEl("select");
 	}
 
@@ -1409,13 +1409,13 @@ export class CardTransferToTargetModal extends Modal {
 		this.sourceSelect = this.createLabeledSelect(contentEl, "Source collection");
 
 		const quantityLabel = contentEl.createEl("label", { cls: "mtg-transfer-field" });
-		quantityLabel.createEl("span", { text: "Quantity" });
+		quantityLabel.createSpan({ text: "Quantity" });
 		this.quantityInput = quantityLabel.createEl("input");
 		this.quantityInput.type = "number";
 		this.quantityInput.min = "1";
 		this.quantityInput.value = "1";
 
-		const actions = contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		const actions = contentEl.createDiv({ cls: "mtg-transfer-actions" });
 		this.applyButton = actions.createEl("button", {
 			text: "Apply",
 			cls: "mod-cta",
@@ -1447,7 +1447,7 @@ export class CardTransferToTargetModal extends Modal {
 
 	private createLabeledSelect(containerEl: HTMLElement, label: string): HTMLSelectElement {
 		const wrapper = containerEl.createEl("label", { cls: "mtg-transfer-field" });
-		wrapper.createEl("span", { text: label });
+		wrapper.createSpan({ text: label });
 		return wrapper.createEl("select");
 	}
 
@@ -1593,7 +1593,7 @@ export class CollectionMassTransferModal extends Modal {
 
 		this.bulkSelect = this.createLabeledSelect(contentEl, "Set all destinations");
 		this.bulkSelect.addEventListener("change", () => this.applyBulkDestination());
-		this.assignmentsEl = contentEl.createEl("div", { cls: "mtg-breakdown-assignments" });
+		this.assignmentsEl = contentEl.createDiv({ cls: "mtg-breakdown-assignments" });
 		this.renderActions("Transfer cards", true, () => {
 			void this.apply();
 		});
@@ -1602,12 +1602,12 @@ export class CollectionMassTransferModal extends Modal {
 
 	private createLabeledSelect(containerEl: HTMLElement, label: string): HTMLSelectElement {
 		const wrapper = containerEl.createEl("label", { cls: "mtg-transfer-field" });
-		wrapper.createEl("span", { text: label });
+		wrapper.createSpan({ text: label });
 		return wrapper.createEl("select");
 	}
 
 	private renderActions(applyText: string, disabled: boolean, onApply: () => void): void {
-		const actions = this.contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		const actions = this.contentEl.createDiv({ cls: "mtg-transfer-actions" });
 		this.applyButton = actions.createEl("button", {
 			text: applyText,
 			cls: "mod-cta",
@@ -1826,7 +1826,7 @@ export class DeckBreakdownModal extends Modal {
 
 		this.bulkSelect = this.createLabeledSelect(contentEl, "Set all destinations");
 		this.bulkSelect.addEventListener("change", () => this.applyBulkDestination());
-		this.assignmentsEl = contentEl.createEl("div", { cls: "mtg-breakdown-assignments" });
+		this.assignmentsEl = contentEl.createDiv({ cls: "mtg-breakdown-assignments" });
 		this.renderActions("Break down deck", true, () => {
 			void this.apply();
 		});
@@ -1835,12 +1835,12 @@ export class DeckBreakdownModal extends Modal {
 
 	private createLabeledSelect(containerEl: HTMLElement, label: string): HTMLSelectElement {
 		const wrapper = containerEl.createEl("label", { cls: "mtg-transfer-field" });
-		wrapper.createEl("span", { text: label });
+		wrapper.createSpan({ text: label });
 		return wrapper.createEl("select");
 	}
 
 	private renderActions(applyText: string, disabled: boolean, onApply: () => void): void {
-		const actions = this.contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		const actions = this.contentEl.createDiv({ cls: "mtg-transfer-actions" });
 		this.applyButton = actions.createEl("button", {
 			text: applyText,
 			cls: applyText === "Remove deck" ? "mod-warning" : "mod-cta",

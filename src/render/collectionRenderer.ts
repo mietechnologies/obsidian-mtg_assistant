@@ -225,7 +225,7 @@ function createCollectionCardCell(
 	ownershipRefs: OwnershipBlockRef[] = []
 ): HTMLTableCellElement {
 	const cell = createEl("td");
-	const span = createEl("span");
+	const span = createSpan();
 	span.className = "mtg-card-ref";
 	span.textContent = row.cardName;
 	span.tabIndex = 0;
@@ -254,7 +254,7 @@ function createQuantityCell(
 	const cell = createEl("td");
 	cell.className = "mtg-collection-qty";
 
-	const wrapper = cell.createEl("div", { cls: "mtg-collection-qty-controls" });
+	const wrapper = cell.createDiv({ cls: "mtg-collection-qty-controls" });
 	const decrement = wrapper.createEl("button", {
 		text: "−",
 		cls: "mtg-collection-stepper",
@@ -271,7 +271,7 @@ function createQuantityCell(
 		void onAdjust(row.key, -1);
 	});
 
-	wrapper.createEl("span", {
+	wrapper.createSpan({
 		text: String(row.quantity),
 		cls: "mtg-collection-qty-value",
 	});

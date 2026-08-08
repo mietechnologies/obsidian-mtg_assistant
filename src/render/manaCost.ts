@@ -68,7 +68,7 @@ function createManaSymbol(symbol: string): HTMLElement | SVGElement {
 	const normalized = symbol.toUpperCase();
 	const svgMarkup = MANA_SYMBOL_SVGS[normalized];
 	if (!svgMarkup) {
-		const fallback = createEl("span");
+		const fallback = createSpan();
 		fallback.className = "mtg-mana-symbol is-fallback";
 		fallback.textContent = normalized;
 		return fallback;
@@ -76,7 +76,7 @@ function createManaSymbol(symbol: string): HTMLElement | SVGElement {
 
 	const svg = createSvgElement(svgMarkup);
 	if (!svg) {
-		const fallback = createEl("span");
+		const fallback = createSpan();
 		fallback.className = "mtg-mana-symbol is-fallback";
 		fallback.textContent = normalized;
 		return fallback;
@@ -112,7 +112,7 @@ function normalizeManaCosts(costs: string[]): string[] {
 }
 
 export function createManaCostElement(costs: string[] | undefined): HTMLElement {
-	const container = createEl("div");
+	const container = createDiv();
 	container.className = "mtg-mana-cost";
 
 	if (!costs || costs.length === 0) {
@@ -122,13 +122,13 @@ export function createManaCostElement(costs: string[] | undefined): HTMLElement 
 
 	normalizeManaCosts(costs).forEach((cost, index) => {
 		if (index > 0) {
-			container.createEl("span", {
+			container.createSpan({
 				text: "//",
 				cls: "mtg-mana-cost-separator",
 			});
 		}
 
-		const row = container.createEl("span", { cls: "mtg-mana-cost-row" });
+		const row = container.createSpan({ cls: "mtg-mana-cost-row" });
 		const symbols = parseManaCost(cost);
 		if (symbols.length === 0) {
 			row.textContent = cost;

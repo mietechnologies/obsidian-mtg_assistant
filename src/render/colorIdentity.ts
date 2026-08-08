@@ -29,7 +29,7 @@ function createSvgElement(svgMarkup: string): SVGElement | null {
 }
 
 export function createColorIdentityElement(colorIdentity: string[]): HTMLElement {
-	const container = createEl("span");
+	const container = createSpan();
 	container.className = "mtg-color-identity";
 
 	if (colorIdentity.length === 0) {

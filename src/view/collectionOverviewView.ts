@@ -66,9 +66,9 @@ interface EditableCollectionRow {
 }
 
 function createStatCard(containerEl: HTMLElement, label: string, value: string): void {
-	const card = containerEl.createEl("div", { cls: "mtg-overview-stat" });
-	card.createEl("div", { text: value, cls: "mtg-overview-stat-value" });
-	card.createEl("div", { text: label, cls: "mtg-overview-stat-label" });
+	const card = containerEl.createDiv({ cls: "mtg-overview-stat" });
+	card.createDiv({ text: value, cls: "mtg-overview-stat-value" });
+	card.createDiv({ text: label, cls: "mtg-overview-stat-label" });
 }
 
 function buildCollectionBlockText(language: string, source: string): string {
@@ -177,7 +177,7 @@ function createQuantityCell(
 	const cell = createEl("td");
 	cell.className = "mtg-collection-qty mtg-overview-qty-cell";
 
-	const wrapper = cell.createEl("div", { cls: "mtg-collection-qty-controls" });
+	const wrapper = cell.createDiv({ cls: "mtg-collection-qty-controls" });
 	const decrement = wrapper.createEl("button", {
 		text: "−",
 		cls: "mtg-collection-stepper",
@@ -190,7 +190,7 @@ function createQuantityCell(
 		view.transferOrRemoveQuantity(row);
 	});
 
-	wrapper.createEl("span", {
+	wrapper.createSpan({
 		text: String(row.quantity),
 		cls: "mtg-collection-qty-value",
 	});
@@ -389,7 +389,7 @@ function renderCollectionLink(view: CollectionOverviewView, containerEl: HTMLEle
 
 	const additionalSourceCount = Math.max(0, row.ownershipRefs.length - 1);
 	if (additionalSourceCount > 0) {
-		containerEl.createEl("span", {
+		containerEl.createSpan({
 			text: ` +${additionalSourceCount}`,
 			cls: "mtg-overview-link-count",
 		});
@@ -420,7 +420,7 @@ function renderHoldingsTable(
 		const tr = tbody.createEl("tr", { cls: "mtg-collection-row" });
 		tr.appendChild(createQuantityCell(view, row));
 		const cardCell = tr.createEl("td");
-		const cardSpan = cardCell.createEl("span", {
+		const cardSpan = cardCell.createSpan({
 			text: row.resolvedName,
 			cls: "mtg-card-ref",
 		});
@@ -543,10 +543,10 @@ export class CollectionOverviewView extends ItemView {
 		rows: ResolvedCollectionRow[],
 		rerender: () => void
 	): void {
-		const controls = containerEl.createEl("div", { cls: "mtg-overview-controls" });
+		const controls = containerEl.createDiv({ cls: "mtg-overview-controls" });
 
 		const searchGroup = controls.createEl("label", { cls: "mtg-overview-control" });
-		searchGroup.createEl("span", {
+		searchGroup.createSpan({
 			text: "Search",
 			cls: "mtg-overview-control-label",
 		});
@@ -562,7 +562,7 @@ export class CollectionOverviewView extends ItemView {
 		});
 
 		const sectionGroup = controls.createEl("label", { cls: "mtg-overview-control" });
-		sectionGroup.createEl("span", {
+		sectionGroup.createSpan({
 			text: "Type",
 			cls: "mtg-overview-control-label",
 		});
@@ -588,7 +588,7 @@ export class CollectionOverviewView extends ItemView {
 		});
 
 		const sortGroup = controls.createEl("label", { cls: "mtg-overview-control" });
-		sortGroup.createEl("span", {
+		sortGroup.createSpan({
 			text: "Sort",
 			cls: "mtg-overview-control-label",
 		});
@@ -675,13 +675,13 @@ export class CollectionOverviewView extends ItemView {
 		});
 		sourceMeta.setAttribute("data-folder", this.getSettingsAccessor().collectionFolder);
 
-		const stats = contentEl.createEl("div", { cls: "mtg-overview-stats" });
+		const stats = contentEl.createDiv({ cls: "mtg-overview-stats" });
 		createStatCard(stats, "Total cards", String(overview.totalQuantity));
 		createStatCard(stats, "Unique cards", String(overview.uniqueCardCount));
 		const totalValue = resolvedRows.reduce((sum, row) => sum + (row.totalPrice ?? 0), 0);
 		createStatCard(stats, "Estimated value", formatUsd(totalValue));
 
-		const body = contentEl.createEl("div", { cls: "mtg-overview-body" });
+		const body = contentEl.createDiv({ cls: "mtg-overview-body" });
 		let grid!: HTMLElement;
 		const rerenderTables = (): void => {
 			grid.empty();
@@ -691,7 +691,7 @@ export class CollectionOverviewView extends ItemView {
 		};
 
 		this.createControls(body, resolvedRows, rerenderTables);
-		grid = body.createEl("div", { cls: "mtg-overview-grid" });
+		grid = body.createDiv({ cls: "mtg-overview-grid" });
 		rerenderTables();
 	}
 }

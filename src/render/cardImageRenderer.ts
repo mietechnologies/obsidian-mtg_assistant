@@ -89,15 +89,15 @@ function renderLegalitySection(container: HTMLElement, result: CardPreviewResult
 		return;
 	}
 
-	const section = container.createEl("div", { cls: "mtg-card-popover-legalities" });
+	const section = container.createDiv({ cls: "mtg-card-popover-legalities" });
 	section.createEl("p", {
 		text: "Legality",
 		cls: "mtg-card-popover-section-title",
 	});
 
-	const grid = section.createEl("div", { cls: "mtg-card-popover-legality-grid" });
+	const grid = section.createDiv({ cls: "mtg-card-popover-legality-grid" });
 	for (const format of formats) {
-		const pill = grid.createEl("span", {
+		const pill = grid.createSpan({
 			text: format.label,
 			cls: `mtg-card-popover-legality-pill is-${format.status}`,
 		});
@@ -115,7 +115,7 @@ export function renderOwnershipPopoverSection(
 			return;
 		}
 
-		const section = container.createEl("div", { cls: "mtg-card-popover-ownership" });
+		const section = container.createDiv({ cls: "mtg-card-popover-ownership" });
 		section.createEl("p", {
 			text: title,
 			cls: "mtg-card-popover-section-title",
@@ -139,7 +139,7 @@ export function renderOwnershipPopoverSection(
 					void app.workspace.getLeaf(true).openFile(linkedFile);
 				}
 			});
-			item.createEl("span", {
+			item.createSpan({
 				text: `x${ref.quantity}`,
 				cls: "mtg-card-popover-ownership-meta",
 			});
@@ -154,7 +154,7 @@ export class MtgPopover {
 	private popoverActive = false;
 
 	constructor() {
-		this.el = createEl("div");
+		this.el = createDiv();
 		this.el.className = "mtg-card-popover";
 		this.el.addEventListener("mouseenter", () => {
 			this.popoverActive = true;
@@ -328,7 +328,7 @@ function createCardSpan(
 	getSettings: () => MTGSettings,
 	popover: MtgPopover
 ): HTMLElement {
-	const span = createEl("span");
+	const span = createSpan();
 	span.className = "mtg-card-ref";
 	span.textContent = cardName;
 	span.tabIndex = 0;
@@ -378,7 +378,7 @@ function replaceTextNodes(
 		const parent = textNode.parentNode;
 		if (!parent) continue;
 
-		const fragment = document.createDocumentFragment();
+		const fragment = createFragment();
 		let lastIndex = 0;
 		let match: RegExpExecArray | null;
 

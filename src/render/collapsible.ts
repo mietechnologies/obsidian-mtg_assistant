@@ -24,18 +24,18 @@ export function createCollapsibleBlock(
 	title: string,
 	options: CollapsibleBlockOptions
 ): CollapsibleBlock {
-	const titleRow = containerEl.createEl("div", { cls: "mtg-block-title-row" });
+	const titleRow = containerEl.createDiv({ cls: "mtg-block-title-row" });
 	const titleButton = titleRow.createEl("button", { cls: "mtg-block-title-button" });
 	titleButton.type = "button";
-	const titleEl = titleButton.createEl("span", {
+	const titleEl = titleButton.createSpan({
 		text: title,
 		cls: "mtg-block-title-text",
 	});
-	const metaEl = titleButton.createEl("span", {
+	const metaEl = titleButton.createSpan({
 		cls: "mtg-block-title-meta",
 	});
-	const actionsEl = titleRow.createEl("div", { cls: "mtg-block-title-actions" });
-	const bodyEl = containerEl.createEl("div", { cls: "mtg-block-body" });
+	const actionsEl = titleRow.createDiv({ cls: "mtg-block-title-actions" });
+	const bodyEl = containerEl.createDiv({ cls: "mtg-block-body" });
 	let meta = options.meta;
 	let collapsed = options.stateKey
 		? COLLAPSED_STATE.get(options.stateKey) ?? options.collapsedByDefault
@@ -88,7 +88,7 @@ export function createCollapsibleSectionRow(
 	cellEl.tabIndex = 0;
 	rowEl.setAttribute("role", "button");
 
-	cellEl.createEl("span", { text: title, cls: "mtg-section-toggle-text" });
+	cellEl.createSpan({ text: title, cls: "mtg-section-toggle-text" });
 	let collapsed = stateKey
 		? COLLAPSED_STATE.get(stateKey) ?? collapsedByDefault
 		: collapsedByDefault;

@@ -559,7 +559,7 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 		link.appendChild(icon);
 	}
 
-	const label = createEl("span");
+	const label = createSpan();
 	label.textContent = "Buy missing cards";
 	link.appendChild(label);
 	return link;
@@ -593,7 +593,7 @@ class CopyBuylistModal extends Modal {
 			cls: "mtg-transfer-meta",
 		});
 
-		const actions = contentEl.createEl("div", { cls: "mtg-transfer-actions" });
+		const actions = contentEl.createDiv({ cls: "mtg-transfer-actions" });
 		const plainButton = actions.createEl("button", {
 			text: "Copy plain text",
 			cls: "mod-cta",
@@ -629,13 +629,13 @@ function createCopyBuylistButton(app: App, rows: DeckDeficitRow[]): HTMLButtonEl
 	button.className = "mtg-tcgplayer-button";
 	button.setAttribute("aria-label", "Copy missing-card buylist");
 
-	const icon = createEl("span");
+	const icon = createSpan();
 	icon.className = "mtg-tcgplayer-button-icon";
 	icon.setAttribute("aria-hidden", "true");
 	setIcon(icon, "clipboard-copy");
 	button.appendChild(icon);
 
-	const label = createEl("span");
+	const label = createSpan();
 	label.textContent = "Copy buylist";
 	button.appendChild(label);
 
@@ -793,7 +793,7 @@ function createCardNameCell(
 	ownershipRefs: OwnershipBlockRef[] = []
 ): HTMLTableCellElement {
 	const cell = createEl("td");
-	const span = createEl("span");
+	const span = createSpan();
 	const isInvalidForDeck =
 		row.deckLegalityStatus === "banned" || row.deckLegalityStatus === "not_legal";
 	span.className = isInvalidForDeck ? "mtg-card-ref is-invalid-for-deck" : "mtg-card-ref";
@@ -811,7 +811,7 @@ function createCardNameCell(
 	);
 	cell.appendChild(span);
 	if ((row.have ?? 0) === 0 && collectionOwned > 0) {
-		cell.createEl("span", {
+		cell.createSpan({
 			text: `${clampHave(collectionOwned, row.quantity)} owned`,
 			cls: "mtg-deck-owned-hint",
 		});
@@ -868,7 +868,7 @@ function createHaveCell(
 	}
 
 	const inlineHave = clampHave(row.have ?? 0, row.quantity);
-	const wrapper = cell.createEl("div", { cls: "mtg-deck-have-controls" });
+	const wrapper = cell.createDiv({ cls: "mtg-deck-have-controls" });
 	const decrement = wrapper.createEl("button", {
 		text: "−",
 		cls: "mtg-deck-have-stepper",
@@ -886,7 +886,7 @@ function createHaveCell(
 		void onAdjustHave(row, inlineHave, -1);
 	});
 
-	wrapper.createEl("span", {
+	wrapper.createSpan({
 		text: String(inlineHave),
 		cls: "mtg-deck-have-value",
 	});
@@ -1236,8 +1236,8 @@ function renderAnalyticsStat(
 	label: string,
 	value: string | HTMLElement
 ): void {
-	const card = containerEl.createEl("div", { cls: "mtg-deck-analytics-stat" });
-	const valueEl = card.createEl("div", {
+	const card = containerEl.createDiv({ cls: "mtg-deck-analytics-stat" });
+	const valueEl = card.createDiv({
 		cls: "mtg-deck-analytics-stat-value",
 	});
 	if (typeof value === "string") {
@@ -1245,7 +1245,7 @@ function renderAnalyticsStat(
 	} else {
 		valueEl.appendChild(value);
 	}
-	card.createEl("div", {
+	card.createDiv({
 		text: label,
 		cls: "mtg-deck-analytics-stat-label",
 	});
@@ -1264,7 +1264,7 @@ function createCollapsibleSection(
 		text: title,
 		cls: "mtg-collapsible-heading",
 	});
-	return details.createEl("div", { cls: "mtg-collapsible-content" });
+	return details.createDiv({ cls: "mtg-collapsible-content" });
 }
 
 function quantizeScale(value: number, max: number, levels = 12, minimumVisible = 1): number {
@@ -1283,20 +1283,20 @@ function renderManaCurveChart(containerEl: HTMLElement, buckets: AnalyticsBucket
 		cls: "mtg-deck-analytics-subheading",
 	});
 
-	const chart = section.createEl("div", { cls: "mtg-deck-curve-chart" });
+	const chart = section.createDiv({ cls: "mtg-deck-curve-chart" });
 	const maxCount = Math.max(...buckets.map((bucket) => bucket.count), 1);
 
 	for (const bucket of buckets) {
-		const column = chart.createEl("div", { cls: "mtg-deck-curve-column" });
-		column.createEl("span", {
+		const column = chart.createDiv({ cls: "mtg-deck-curve-column" });
+		column.createSpan({
 			text: String(bucket.count),
 			cls: "mtg-deck-curve-value",
 		});
 		const level = quantizeScale(bucket.count, maxCount);
-		column.createEl("div", {
+		column.createDiv({
 			cls: `mtg-deck-curve-bar is-level-${level}`,
 		});
-		column.createEl("span", {
+		column.createSpan({
 			text: bucket.label,
 			cls: "mtg-deck-curve-label",
 		});
@@ -1310,25 +1310,25 @@ function renderTypeDistribution(containerEl: HTMLElement, buckets: AnalyticsBuck
 		cls: "mtg-deck-analytics-subheading",
 	});
 
-	const bar = section.createEl("div", { cls: "mtg-deck-type-bar" });
+	const bar = section.createDiv({ cls: "mtg-deck-type-bar" });
 	for (const bucket of buckets) {
 		const spanLevel = quantizeScale(bucket.count, Math.max(totalCards, 1));
-		bar.createEl("span", {
+		bar.createSpan({
 			cls: `mtg-deck-type-segment is-${normalizeCardKey(bucket.label).replace(/[^a-z0-9]+/g, "-")} is-span-${spanLevel}`,
 		});
 	}
 
-	const legend = section.createEl("div", { cls: "mtg-deck-type-legend" });
+	const legend = section.createDiv({ cls: "mtg-deck-type-legend" });
 	for (const bucket of buckets) {
-		const row = legend.createEl("div", { cls: "mtg-deck-type-legend-row" });
-		row.createEl("span", {
+		const row = legend.createDiv({ cls: "mtg-deck-type-legend-row" });
+		row.createSpan({
 			cls: `mtg-deck-type-dot is-${normalizeCardKey(bucket.label).replace(/[^a-z0-9]+/g, "-")}`,
 		});
-		row.createEl("span", {
+		row.createSpan({
 			text: bucket.label,
 			cls: "mtg-deck-type-legend-label",
 		});
-		row.createEl("span", {
+		row.createSpan({
 			text: `${bucket.count} · ${formatPercent(bucket.count, totalCards)}`,
 			cls: "mtg-deck-type-legend-value",
 		});
@@ -1413,14 +1413,14 @@ function renderDeckAnalyticsSection(
 		"mtg-deck-analytics-section",
 		"Deck analytics"
 	);
-	const header = section.createEl("div", { cls: "mtg-deck-analytics-header" });
+	const header = section.createDiv({ cls: "mtg-deck-analytics-header" });
 	if (deckFormat) {
-		header.createEl("span", {
+		header.createSpan({
 			text: formatDeckFormatLabel(deckFormat),
 			cls: "mtg-deck-analytics-format-badge",
 		});
 	} else if (rawFormat) {
-		header.createEl("span", {
+		header.createSpan({
 			text: formatDeckFormatLabel(rawFormat),
 			cls: "mtg-deck-analytics-format-badge is-unsupported",
 		});
@@ -1430,12 +1430,12 @@ function renderDeckAnalyticsSection(
 		renderDeckValidationPanel(section, validationIssues, deckFormat);
 	}
 
-	const stats = section.createEl("div", { cls: "mtg-deck-analytics-stats" });
+	const stats = section.createDiv({ cls: "mtg-deck-analytics-stats" });
 	renderAnalyticsStat(stats, "Total cards", String(analytics.totalCards));
 	renderAnalyticsStat(stats, "Average MV", formatAverageManaValue(analytics.averageManaValue));
 	renderAnalyticsStat(stats, "Colors", createColorIdentityElement(analytics.colorIdentity));
 
-	const panels = section.createEl("div", { cls: "mtg-deck-analytics-grid" });
+	const panels = section.createDiv({ cls: "mtg-deck-analytics-grid" });
 	renderManaCurveChart(panels, analytics.manaCurve);
 	renderTypeDistribution(panels, analytics.typeDistribution, analytics.totalCards);
 	renderKeywordTable(section, analytics.keywords.slice(0, 12));
@@ -1550,7 +1550,7 @@ function renderCollectionCoverageSection(
 	const tcgPlayerButton = createTcgPlayerButton(coverage.rows);
 	const copyBuylistButton = createCopyBuylistButton(app, coverage.rows);
 	if (tcgPlayerButton || copyBuylistButton) {
-		const actionRow = section.createEl("div", { cls: "mtg-deck-deficit-actions" });
+		const actionRow = section.createDiv({ cls: "mtg-deck-deficit-actions" });
 		if (tcgPlayerButton) {
 			actionRow.appendChild(tcgPlayerButton);
 		}
