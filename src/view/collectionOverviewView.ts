@@ -374,7 +374,10 @@ function renderCollectionLink(view: CollectionOverviewView, containerEl: HTMLEle
 	});
 	link.addEventListener("click", (event) => {
 		event.preventDefault();
-		void view.app.workspace.openLinkText(primaryPath, "", true);
+		const linkedFile = view.app.vault.getAbstractFileByPath(primaryPath);
+		if (linkedFile instanceof TFile) {
+			void view.app.workspace.getLeaf(true).openFile(linkedFile);
+		}
 	});
 
 	if (row.sourcePaths.length > 1) {
@@ -481,14 +484,13 @@ export class CollectionOverviewView extends ItemView {
 			this.getSettingsAccessor().collectionCodeBlockLanguage,
 			nextSource
 		);
-		await this.app.vault.process(file, (currentContent) => {
-			const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
-			const currentLines = currentContent.split(/\r?\n/);
-			const nextLines = nextBlock.split("\n");
+		const currentContent = await this.app.vault.cachedRead(file);
+		const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
+		const currentLines = currentContent.split(/\r?\n/);
+		const nextLines = nextBlock.split("\n");
 
-			currentLines.splice(sourceRef.lineStart, sectionLineCount, ...nextLines);
-			return currentLines.join(eol);
-		});
+		currentLines.splice(sourceRef.lineStart, sectionLineCount, ...nextLines);
+		await this.app.vault.modify(file, currentLines.join(eol));
 		await this.refresh();
 	}
 
