@@ -61,14 +61,14 @@ const MANA_SYMBOL_SVGS: Record<string, string> = {
 function createSvgElement(svgMarkup: string): SVGElement | null {
 	const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
 	const svg = doc.documentElement;
-	return svg instanceof SVGElement ? svg : null;
+	return svg.instanceOf(SVGElement) ? svg : null;
 }
 
 function createManaSymbol(symbol: string): HTMLElement | SVGElement {
 	const normalized = symbol.toUpperCase();
 	const svgMarkup = MANA_SYMBOL_SVGS[normalized];
 	if (!svgMarkup) {
-		const fallback = document.createElement("span");
+		const fallback = createEl("span");
 		fallback.className = "mtg-mana-symbol is-fallback";
 		fallback.textContent = normalized;
 		return fallback;
@@ -76,7 +76,7 @@ function createManaSymbol(symbol: string): HTMLElement | SVGElement {
 
 	const svg = createSvgElement(svgMarkup);
 	if (!svg) {
-		const fallback = document.createElement("span");
+		const fallback = createEl("span");
 		fallback.className = "mtg-mana-symbol is-fallback";
 		fallback.textContent = normalized;
 		return fallback;
@@ -88,7 +88,14 @@ function createManaSymbol(symbol: string): HTMLElement | SVGElement {
 }
 
 function parseManaCost(cost: string): string[] {
-	return Array.from(cost.matchAll(/\{([^}]+)\}/g)).map((match) => match[1] ?? "");
+	const symbols: string[] = [];
+	const symbolPattern = /\{([^}]+)\}/g;
+	let match = symbolPattern.exec(cost);
+	while (match) {
+		symbols.push(match[1] ?? "");
+		match = symbolPattern.exec(cost);
+	}
+	return symbols;
 }
 
 function normalizeManaCosts(costs: string[]): string[] {
@@ -99,7 +106,7 @@ function normalizeManaCosts(costs: string[]): string[] {
 }
 
 export function createManaCostElement(costs: string[] | undefined): HTMLElement {
-	const container = document.createElement("div");
+	const container = createEl("div");
 	container.className = "mtg-mana-cost";
 
 	if (!costs || costs.length === 0) {

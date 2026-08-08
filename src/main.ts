@@ -140,7 +140,7 @@ export default class MtgAssistantPlugin extends Plugin {
 			if (classes.includes(`language-${this.settings.deckCodeBlockLanguage}`)) {
 				const sectionInfo = ctx.getSectionInfo(preEl);
 				const sourcePath = ctx.sourcePath;
-				const container = document.createElement("div");
+				const container = createEl("div");
 				preEl.replaceWith(container);
 				await renderDeckTable(
 					this.app,
@@ -182,7 +182,7 @@ export default class MtgAssistantPlugin extends Plugin {
 			if (classes.includes(`language-${this.settings.collectionCodeBlockLanguage}`)) {
 				const sectionInfo = ctx.getSectionInfo(preEl);
 				const sourcePath = ctx.sourcePath;
-				const container = document.createElement("div");
+				const container = createEl("div");
 				preEl.replaceWith(container);
 				await renderCollectionTable({
 					containerEl: container,
@@ -277,7 +277,6 @@ export default class MtgAssistantPlugin extends Plugin {
 				type: COLLECTION_OVERVIEW_VIEW_TYPE,
 				active: true,
 			});
-			void this.app.workspace.revealLeaf(leaf);
 		}
 
 	private async updateCollectionBlockInFile(
@@ -326,13 +325,12 @@ export default class MtgAssistantPlugin extends Plugin {
 
 		const sectionLineCount = sectionText.split(/\r?\n/).length;
 		const nextBlock = `\`\`\`${language}\n${nextSource}\n\`\`\``;
-		await this.app.vault.process(file, (currentContent) => {
-			const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
-			const currentLines = currentContent.split(/\r?\n/);
-			const nextLines = nextBlock.split("\n");
+		const currentContent = await this.app.vault.cachedRead(file);
+		const eol = currentContent.includes("\r\n") ? "\r\n" : "\n";
+		const currentLines = currentContent.split(/\r?\n/);
+		const nextLines = nextBlock.split("\n");
 
-			currentLines.splice(lineStart, sectionLineCount, ...nextLines);
-			return currentLines.join(eol);
-		});
+		currentLines.splice(lineStart, sectionLineCount, ...nextLines);
+		await this.app.vault.modify(file, currentLines.join(eol));
 	}
 }

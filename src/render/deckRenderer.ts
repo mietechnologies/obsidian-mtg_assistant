@@ -506,7 +506,7 @@ function buildDeckValidation(rows: DeckRow[], deckFormat: DeckFormat | null): De
 function createSvgElement(svgMarkup: string): SVGElement | null {
 	const doc = new DOMParser().parseFromString(svgMarkup, "image/svg+xml");
 	const svg = doc.documentElement;
-	return svg instanceof SVGElement ? svg : null;
+	return svg.instanceOf(SVGElement) ? svg : null;
 }
 
 function formatTcgPlayerMassEntryCardName(cardName: string): string {
@@ -545,7 +545,7 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 		return null;
 	}
 
-	const link = document.createElement("a");
+	const link = createEl("a");
 	link.className = "mtg-tcgplayer-button";
 	link.href = url;
 	link.target = "_blank";
@@ -559,7 +559,7 @@ function createTcgPlayerButton(rows: DeckDeficitRow[]): HTMLAnchorElement | null
 		link.appendChild(icon);
 	}
 
-	const label = document.createElement("span");
+	const label = createEl("span");
 	label.textContent = "Buy missing cards";
 	link.appendChild(label);
 	return link;
@@ -792,8 +792,8 @@ function createCardNameCell(
 	collectionOwned = 0,
 	ownershipRefs: OwnershipBlockRef[] = []
 ): HTMLTableCellElement {
-	const cell = document.createElement("td");
-	const span = document.createElement("span");
+	const cell = createEl("td");
+	const span = createEl("span");
 	const isInvalidForDeck =
 		row.deckLegalityStatus === "banned" || row.deckLegalityStatus === "not_legal";
 	span.className = isInvalidForDeck ? "mtg-card-ref is-invalid-for-deck" : "mtg-card-ref";

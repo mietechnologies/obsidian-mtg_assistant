@@ -1,7 +1,6 @@
 .mtg-card-ref {
 	color: var(--link-color);
-	text-decoration: underline;
-	text-decoration-style: dotted;
+	border-bottom: 1px dotted currentColor;
 	cursor: pointer;
 	border-radius: 2px;
 	outline-offset: 2px;
@@ -13,7 +12,7 @@
 
 .mtg-card-ref.is-invalid-for-deck {
 	color: var(--text-error);
-	text-decoration-color: var(--text-error);
+	border-bottom-color: var(--text-error);
 }
 
 .mtg-card-warning {
@@ -323,7 +322,10 @@ tr.is-collapsed {
 	font-size: 1.05em;
 	color: var(--text-normal);
 	background: var(--background-secondary);
-	text-align: left !important;
+}
+
+.mtg-deck-table td.mtg-deck-section-cell {
+	text-align: left;
 }
 
 .mtg-deck-qty {
@@ -1089,7 +1091,10 @@ button.mtg-tcgplayer-button {
 	font-size: 1.05em;
 	color: var(--text-normal);
 	background: var(--background-secondary);
-	text-align: left !important;
+}
+
+.mtg-collection-table td.mtg-collection-section-cell {
+	text-align: left;
 }
 
 .mtg-collection-qty {

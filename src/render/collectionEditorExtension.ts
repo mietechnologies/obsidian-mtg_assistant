@@ -45,7 +45,7 @@ class MtgCollectionWidget extends WidgetType {
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		const container = document.createElement("div");
+		const container = createEl("div");
 		container.className = "mtg-collection-widget";
 		const activeFile = this.app.workspace.getActiveFile();
 		const lineStart = view.state.doc.lineAt(this.blockStart).number - 1;
