@@ -332,8 +332,11 @@ tr.is-collapsed {
 	width: 4rem;
 	min-width: 4rem;
 	color: var(--text-muted);
-	text-align: center !important;
 	white-space: nowrap;
+}
+
+.mtg-deck-table td.mtg-deck-qty {
+	text-align: center;
 }
 
 .mtg-deck-price {
@@ -397,7 +400,13 @@ tr.is-collapsed {
 .mtg-transfer-cell {
 	width: 2.75rem;
 	min-width: 2.75rem;
-	text-align: center !important;
+}
+
+.mtg-deck-table th.mtg-transfer-header,
+.mtg-deck-table td.mtg-transfer-cell,
+.mtg-collection-table th.mtg-transfer-header,
+.mtg-collection-table td.mtg-transfer-cell {
+	text-align: center;
 }
 
 .mtg-transfer-button {
@@ -480,19 +489,25 @@ tr.is-collapsed {
 .mtg-breakdown-qty {
 	width: 3rem;
 	color: var(--text-muted);
-	text-align: center !important;
 }
 
 .mtg-breakdown-price {
 	width: 6.5rem;
-	text-align: right !important;
 	white-space: nowrap;
 }
 
 .mtg-breakdown-color {
 	width: 4rem;
-	text-align: center !important;
 	white-space: nowrap;
+}
+
+.mtg-breakdown-table td.mtg-breakdown-qty,
+.mtg-breakdown-table td.mtg-breakdown-color {
+	text-align: center;
+}
+
+.mtg-breakdown-table td.mtg-breakdown-price {
+	text-align: right;
 }
 
 .mtg-breakdown-color .mtg-color-identity {
@@ -1078,7 +1093,10 @@ button.mtg-tcgplayer-button {
 
 .mtg-collection-select {
 	width: 2.25rem;
-	text-align: center !important;
+}
+
+.mtg-collection-table td.mtg-collection-select {
+	text-align: center;
 }
 
 .mtg-collection-select input {

@@ -134,7 +134,10 @@ export function renderOwnershipPopoverSection(
 			link.addEventListener("click", (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				void app.workspace.openLinkText(ref.path, "", true);
+				const linkedFile = app.vault.getAbstractFileByPath(ref.path);
+				if (linkedFile instanceof TFile) {
+					void app.workspace.getLeaf(true).openFile(linkedFile);
+				}
 			});
 			item.createEl("span", {
 				text: `x${ref.quantity}`,

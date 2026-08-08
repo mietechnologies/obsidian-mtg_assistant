@@ -48,7 +48,17 @@ function optionalNumber(value: unknown): number | undefined {
 }
 
 function optionalCardMetadata(value: unknown): CardMetadataFields | undefined {
-	return isRecord(value) ? value as CardMetadataFields : undefined;
+	return isRecord(value) ? value : undefined;
+}
+
+function serializeMetadataEntries(
+	entries: Iterable<readonly [string, MetadataEntry]>
+): Record<string, MetadataEntry> {
+	const serialized: Record<string, MetadataEntry> = {};
+	for (const [key, entry] of entries) {
+		serialized[key] = entry;
+	}
+	return serialized;
 }
 
 function parseMetadataEntry(value: unknown): MetadataEntry | null {
@@ -348,7 +358,7 @@ export class CardCache {
 			return;
 		}
 
-		const serialized = Object.fromEntries(this.metadata.entries());
+		const serialized = serializeMetadataEntries(this.metadata.entries());
 		await this.app.vault.adapter.write(this.metadataPath, JSON.stringify(serialized, null, 2));
 	}
 
@@ -479,7 +489,7 @@ export class CardCache {
 
 	private async setMetadata(key: string, entry: MetadataEntry): Promise<void> {
 		this.metadata.set(key, entry);
-		const serialized = Object.fromEntries(this.metadata.entries());
+		const serialized = serializeMetadataEntries(this.metadata.entries());
 		await this.app.vault.adapter.write(this.metadataPath, JSON.stringify(serialized, null, 2));
 	}
 
@@ -487,7 +497,7 @@ export class CardCache {
 		for (const [key, entry] of entries.entries()) {
 			this.metadata.set(key, entry);
 		}
-		const serialized = Object.fromEntries(this.metadata.entries());
+		const serialized = serializeMetadataEntries(this.metadata.entries());
 		await this.app.vault.adapter.write(this.metadataPath, JSON.stringify(serialized, null, 2));
 	}
 

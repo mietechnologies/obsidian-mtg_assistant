@@ -624,18 +624,18 @@ function createCopyBuylistButton(app: App, rows: DeckDeficitRow[]): HTMLButtonEl
 		return null;
 	}
 
-	const button = document.createElement("button");
+	const button = createEl("button");
 	button.type = "button";
 	button.className = "mtg-tcgplayer-button";
 	button.setAttribute("aria-label", "Copy missing-card buylist");
 
-	const icon = document.createElement("span");
+	const icon = createEl("span");
 	icon.className = "mtg-tcgplayer-button-icon";
 	icon.setAttribute("aria-hidden", "true");
 	setIcon(icon, "clipboard-copy");
 	button.appendChild(icon);
 
-	const label = document.createElement("span");
+	const label = createEl("span");
 	label.textContent = "Copy buylist";
 	button.appendChild(label);
 
@@ -859,7 +859,7 @@ function createHaveCell(
 	onTransferOwned: ((row: DeckRow) => void) | null,
 	onTransferAway: ((row: DeckRow, inlineHave: number) => void) | null
 ): HTMLTableCellElement {
-	const cell = document.createElement("td");
+	const cell = createEl("td");
 	cell.className = "mtg-deck-qty";
 
 	if (!onAdjustHave) {

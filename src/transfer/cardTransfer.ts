@@ -104,6 +104,15 @@ interface PlannedCollectionMassTransfer {
 
 const DECK_BREAKDOWN_REMOVE_VALUE = "__mtg_remove_from_collection__";
 
+async function modifyVaultFile(
+	app: App,
+	file: TFile,
+	updateContent: (content: string) => string
+): Promise<void> {
+	const content = await app.vault.cachedRead(file);
+	await app.vault.modify(file, updateContent(content));
+}
+
 function normalizeCardKey(cardName: string): string {
 	return cardName.trim().toLowerCase();
 }
@@ -662,7 +671,7 @@ async function applyTransfer(
 	}
 
 	if (source.path === target.path) {
-		await app.vault.process(sourceFile, (content) => {
+		await modifyVaultFile(app, sourceFile, (content) => {
 			const eol = content.includes("\r\n") ? "\r\n" : "\n";
 			const sourceBlock = locateBlock(content, source.lineStart, source.language, settings);
 			const targetBlock = locateBlock(content, target.lineStart, target.language, settings);
@@ -701,7 +710,7 @@ async function applyTransfer(
 		return;
 	}
 
-	await app.vault.process(sourceFile, (content) => {
+	await modifyVaultFile(app, sourceFile, (content) => {
 		const eol = content.includes("\r\n") ? "\r\n" : "\n";
 		const block = locateBlock(content, source.lineStart, source.language, settings);
 		if (!block) {
@@ -719,7 +728,7 @@ async function applyTransfer(
 		return lines.join(eol);
 	});
 
-	await app.vault.process(targetFile, (content) => {
+	await modifyVaultFile(app, targetFile, (content) => {
 		const eol = content.includes("\r\n") ? "\r\n" : "\n";
 		const block = locateBlock(content, target.lineStart, target.language, settings);
 		if (!block) {
@@ -754,7 +763,7 @@ async function removeFromSource(
 		throw new Error("Could not find the source note.");
 	}
 
-	await app.vault.process(sourceFile, (content) => {
+	await modifyVaultFile(app, sourceFile, (content) => {
 		const eol = content.includes("\r\n") ? "\r\n" : "\n";
 		const block = locateBlock(content, source.lineStart, source.language, settings);
 		if (!block) {
@@ -789,7 +798,7 @@ async function addNewToBlock(
 		throw new Error("Could not find the target note.");
 	}
 
-	await app.vault.process(targetFile, (content) => {
+	await modifyVaultFile(app, targetFile, (content) => {
 		const eol = content.includes("\r\n") ? "\r\n" : "\n";
 		const block = locateBlock(content, target.lineStart, target.language, settings);
 		if (!block) {
@@ -818,7 +827,7 @@ async function removeDeckBlock(
 		throw new Error("Could not find the deck note.");
 	}
 
-	await app.vault.process(sourceFile, (content) => {
+	await modifyVaultFile(app, sourceFile, (content) => {
 		const eol = content.includes("\r\n") ? "\r\n" : "\n";
 		const block = locateBlock(content, source.lineStart, "deck", settings);
 		if (!block) {
@@ -872,7 +881,7 @@ async function applyDeckBreakdown(
 			throw new Error("Could not find the destination note.");
 		}
 
-		await app.vault.process(targetFile, (content) => {
+		await modifyVaultFile(app, targetFile, (content) => {
 			const eol = content.includes("\r\n") ? "\r\n" : "\n";
 			const lines = content.split(/\r?\n/);
 			const assignmentsByTarget = new Map<string, DeckBreakdownAssignment[]>();
@@ -959,7 +968,7 @@ async function applyDeckBreakdown(
 		if (plan.remainingQuantity === 0) {
 			await removeDeckBlock(app, settings, source);
 		} else {
-			await app.vault.process(sourceFile, (content) => {
+			await modifyVaultFile(app, sourceFile, (content) => {
 				const eol = content.includes("\r\n") ? "\r\n" : "\n";
 				const sourceBlock = locateBlock(content, source.lineStart, "deck", settings);
 				if (!sourceBlock) {
@@ -1024,7 +1033,7 @@ async function applyCollectionMassTransfer(
 			throw new Error("Could not find a destination note.");
 		}
 
-		await app.vault.process(targetFile, (content) => {
+		await modifyVaultFile(app, targetFile, (content) => {
 			const eol = content.includes("\r\n") ? "\r\n" : "\n";
 			const lines = content.split(/\r?\n/);
 			const assignmentsByTarget = new Map<string, CollectionMassTransferAssignment[]>();
@@ -1101,7 +1110,7 @@ async function applyCollectionMassTransfer(
 	}
 
 	if (!assignmentsByFile.has(source.path)) {
-		await app.vault.process(sourceFile, (content) => {
+		await modifyVaultFile(app, sourceFile, (content) => {
 			const eol = content.includes("\r\n") ? "\r\n" : "\n";
 			const sourceBlock = locateBlock(content, source.lineStart, "collection", settings);
 			if (!sourceBlock) {
@@ -2027,7 +2036,7 @@ export function createDeckBreakdownButton(
 	settings: MTGSettings,
 	context: DeckBreakdownContext
 ): HTMLButtonElement {
-	const button = document.createElement("button");
+	const button = createEl("button");
 	button.type = "button";
 	button.className = "mtg-block-action-button";
 	button.setAttribute("aria-label", `Break down ${context.deckName}`);
@@ -2046,7 +2055,7 @@ export function createTransferButton(
 	settings: MTGSettings,
 	row: TransferRowContext
 ): HTMLButtonElement {
-	const button = document.createElement("button");
+	const button = createEl("button");
 	button.type = "button";
 	button.className = "mtg-transfer-button";
 	button.disabled = row.availableQuantity <= 0;

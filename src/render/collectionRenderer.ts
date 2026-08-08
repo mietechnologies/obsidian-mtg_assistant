@@ -296,7 +296,7 @@ function createSelectionCell(
 	selectedKeys: Set<string>,
 	onSelectionChange: (key: string, selected: boolean) => void
 ): HTMLTableCellElement {
-	const cell = document.createElement("td");
+	const cell = createEl("td");
 	cell.className = "mtg-collection-select";
 	const checkbox = cell.createEl("input");
 	checkbox.type = "checkbox";
