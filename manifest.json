@@ -2,7 +2,7 @@
 	"id": "mtgassistant",
 	"name": "MTG Assistant",
 	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
+	"minAppVersion": "1.10.3",
 	"description": "Manage your Magic: The Gathering collection and deck lists via your notes.",
 	"author": "Michael Craun",
 	"authorUrl": "",

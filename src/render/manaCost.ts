@@ -99,10 +99,16 @@ function parseManaCost(cost: string): string[] {
 }
 
 function normalizeManaCosts(costs: string[]): string[] {
-	return costs
-		.flatMap((cost) => cost.split(/\s*\/\/\s*/))
-		.map((cost) => cost.trim())
-		.filter((cost) => cost.length > 0);
+	const normalizedCosts: string[] = [];
+	for (const cost of costs) {
+		for (const segment of cost.split(/\s*\/\/\s*/)) {
+			const trimmed = segment.trim();
+			if (trimmed.length > 0) {
+				normalizedCosts.push(trimmed);
+			}
+		}
+	}
+	return normalizedCosts;
 }
 
 export function createManaCostElement(costs: string[] | undefined): HTMLElement {

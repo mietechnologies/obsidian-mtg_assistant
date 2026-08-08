@@ -461,7 +461,12 @@ export class CardCache {
 				return;
 			}
 
-			for (const [key, value] of Object.entries(parsed)) {
+			for (const key in parsed) {
+				if (!Object.prototype.hasOwnProperty.call(parsed, key)) {
+					continue;
+				}
+
+				const value = parsed[key];
 				const entry = parseMetadataEntry(value);
 				if (entry) {
 					const timestamp = entry.staticTimestamp ?? entry.timestamp;
