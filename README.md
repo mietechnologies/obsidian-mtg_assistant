@@ -68,6 +68,7 @@ Deck list behavior:
 - Optional section labels are supported.
 - A configurable legacy commander section marker is still supported.
 - An optional `format:` line enables format-specific validation.
+- An optional `digital: true` or `digital-only: true` line marks a deck as digital-only.
 
 Supported deck formats:
 
@@ -91,6 +92,10 @@ Rendered deck features:
 - Collection coverage against notes in your configured collection folder
 - Estimated missing-card cost
 - TCGPlayer mass-entry link and clipboard buylist for missing cards
+- Per-card transfer controls for moving collection copies into deck needs
+- Transfers between deck and collection blocks, including collection-to-deck, deck-to-collection, and collection-to-collection moves
+- Deck breakdown controls for moving owned cards out of a deck and removing the deck block
+- Digital-only decks can be removed as deck blocks, but are not valid destinations for physical card transfers or deck breakdown
 - Deck analytics including mana curve, type distribution, color identity, and keyword summaries
 
 ## Collection Lists
@@ -115,9 +120,12 @@ Rendered collection features:
 - Color identity badges
 - Current unit prices when available
 - Inline quantity steppers
+- Per-card transfer controls
+- Transfers between collection and deck blocks
+- Mass-transfer selection for moving multiple selected cards into decks or collections
 - Optional automatic row removal when quantity reaches zero
 
-Collection lists are writable from the rendered view. Adjusting a quantity updates the underlying code block in the note.
+Collection lists are writable from the rendered view. Adjusting a quantity or transferring cards updates the underlying code block in the note.
 
 ## Collection Overview
 
